@@ -1,0 +1,24 @@
+#!/bin/sh
+# Give the app its Vitruvian identity (signature, version) so Tracker and
+# Deskbar treat it as an application. These tools need a running Vitruvian
+# session, so this happens at install time, not at build time.
+# Every step is optional: the app works without them.
+set -e
+APP=/system/apps/IVPN
+RDEF=/system/data/ivpn-vitruvian/IVPN.rdef
+
+if [ "$1" = "configure" ]; then
+	if command -v rc >/dev/null 2>&1 && command -v xres >/dev/null 2>&1 \
+		&& command -v resattr >/dev/null 2>&1 && [ -f "$RDEF" ]; then
+		RSRC="$(mktemp)"
+		if rc "$RDEF" -o "$RSRC" >/dev/null 2>&1; then
+			xres -o "$APP" "$RSRC" >/dev/null 2>&1 || true
+			resattr -O -o "$APP" "$RSRC" >/dev/null 2>&1 || true
+		fi
+		rm -f "$RSRC"
+	fi
+	if command -v mimeset >/dev/null 2>&1; then
+		mimeset -A -f "$APP" >/dev/null 2>&1 || true
+	fi
+fi
+exit 0
