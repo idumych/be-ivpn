@@ -71,19 +71,23 @@ JBool(const json& j, const char* key)
 // #pragma mark -
 
 
-DeskbarView::DeskbarView(BRect frame)
+IVPNDeskbarView::IVPNDeskbarView(BRect frame)
 	:
-	BView(frame, IVPN_DESKBAR_ITEM_NAME, B_FOLLOW_NONE, B_WILL_DRAW),
-	fDaemon(NULL),
-	fRetryRunner(NULL),
-	fState(kNoService),
-	fFirewall(false),
-	fType(VpnType::WireGuard)
+	BView(frame, IVPN_DESKBAR_ITEM_NAME, B_FOLLOW_NONE, B_WILL_DRAW)
 {
+	_Init();
 }
 
 
-DeskbarView::~DeskbarView()
+IVPNDeskbarView::IVPNDeskbarView(BMessage* archive)
+	:
+	BView(archive)
+{
+	_Init();
+}
+
+
+IVPNDeskbarView::~IVPNDeskbarView()
 {
 	delete fRetryRunner;
 	delete fDaemon;
@@ -91,7 +95,36 @@ DeskbarView::~DeskbarView()
 
 
 void
-DeskbarView::AttachedToWindow()
+IVPNDeskbarView::_Init()
+{
+	fDaemon = NULL;
+	fRetryRunner = NULL;
+	fState = kNoService;
+	fFirewall = false;
+	fType = VpnType::WireGuard;
+}
+
+
+BArchivable*
+IVPNDeskbarView::Instantiate(BMessage* archive)
+{
+	if (!validate_instantiation(archive, "IVPNDeskbarView"))
+		return NULL;
+	return new IVPNDeskbarView(archive);
+}
+
+
+status_t
+IVPNDeskbarView::Archive(BMessage* data, bool deep) const
+{
+	// "class" (added by BArchivable) lets Deskbar find Instantiate() in
+	// this add-on, which stays loaded; no state needs saving.
+	return BView::Archive(data, deep);
+}
+
+
+void
+IVPNDeskbarView::AttachedToWindow()
 {
 	BView::AttachedToWindow();
 	AdoptParentColors();
@@ -103,7 +136,7 @@ DeskbarView::AttachedToWindow()
 
 
 void
-DeskbarView::DetachedFromWindow()
+IVPNDeskbarView::DetachedFromWindow()
 {
 	delete fRetryRunner;
 	fRetryRunner = NULL;
@@ -114,7 +147,7 @@ DeskbarView::DetachedFromWindow()
 
 
 void
-DeskbarView::Draw(BRect updateRect)
+IVPNDeskbarView::Draw(BRect updateRect)
 {
 	BRect bounds = Bounds();
 	FillRect(bounds, B_SOLID_LOW);
@@ -147,7 +180,7 @@ DeskbarView::Draw(BRect updateRect)
 
 
 void
-DeskbarView::MouseDown(BPoint where)
+IVPNDeskbarView::MouseDown(BPoint where)
 {
 	int32 buttons = B_PRIMARY_MOUSE_BUTTON;
 	if (Window()->CurrentMessage() != NULL)
@@ -161,7 +194,7 @@ DeskbarView::MouseDown(BPoint where)
 
 
 void
-DeskbarView::MessageReceived(BMessage* message)
+IVPNDeskbarView::MessageReceived(BMessage* message)
 {
 	switch (message->what) {
 		case kMsgDaemonLine:
@@ -213,7 +246,7 @@ DeskbarView::MessageReceived(BMessage* message)
 
 
 void
-DeskbarView::_TryConnect()
+IVPNDeskbarView::_TryConnect()
 {
 	delete fRetryRunner;
 	fRetryRunner = NULL;
@@ -228,7 +261,7 @@ DeskbarView::_TryConnect()
 
 
 void
-DeskbarView::_ScheduleRetry()
+IVPNDeskbarView::_ScheduleRetry()
 {
 	delete fRetryRunner;
 	BMessage retry(kMsgRetry);
@@ -237,7 +270,7 @@ DeskbarView::_ScheduleRetry()
 
 
 void
-DeskbarView::_HandleLine(const char* line)
+IVPNDeskbarView::_HandleLine(const char* line)
 {
 	json m = json::parse(line, nullptr, false);
 	if (m.is_discarded() || !m.is_object())
@@ -278,7 +311,7 @@ DeskbarView::_HandleLine(const char* line)
 
 
 void
-DeskbarView::_SetState(State state)
+IVPNDeskbarView::_SetState(State state)
 {
 	fState = state;
 	BString tip = _Headline();
@@ -291,7 +324,7 @@ DeskbarView::_SetState(State state)
 
 
 BString
-DeskbarView::_Headline() const
+IVPNDeskbarView::_Headline() const
 {
 	switch (fState) {
 		case kConnected:	return "IVPN: Protected";
@@ -305,7 +338,7 @@ DeskbarView::_Headline() const
 
 
 BString
-DeskbarView::_Detail() const
+IVPNDeskbarView::_Detail() const
 {
 	BString detail;
 	if (fState == kConnected) {
@@ -323,7 +356,7 @@ DeskbarView::_Detail() const
 
 
 void
-DeskbarView::_ShowMenu(BPoint where)
+IVPNDeskbarView::_ShowMenu(BPoint where)
 {
 	BPopUpMenu* menu = new BPopUpMenu("ivpn", false, false);
 	menu->SetFont(be_plain_font);
@@ -365,5 +398,5 @@ extern "C" _EXPORT BView*
 instantiate_deskbar_item(float maxWidth, float maxHeight)
 {
 	float size = std::min(maxWidth, maxHeight);
-	return new DeskbarView(BRect(0, 0, size - 1, size - 1));
+	return new IVPNDeskbarView(BRect(0, 0, size - 1, size - 1));
 }

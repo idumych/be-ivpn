@@ -4,8 +4,10 @@
  * protected, grey service not running or not logged in).
  *
  * Built as an add-on library (IVPNDeskbar.so) that Deskbar loads through
- * instantiate_deskbar_item(). It has its own connection to the IVPN
- * service, so it works while the IVPN window is closed.
+ * instantiate_deskbar_item(). Deskbar then archives the view and rebuilds
+ * it with Instantiate(), so the view must be archivable. It has its own
+ * connection to the IVPN service, so it works while the IVPN window is
+ * closed.
  *
  * Distributed under the terms of the GNU GPL v3.
  */
@@ -22,10 +24,14 @@
 class BMessageRunner;
 class DaemonClient;
 
-class DeskbarView : public BView {
+class IVPNDeskbarView : public BView {
 public:
-							DeskbarView(BRect frame);
-	virtual					~DeskbarView();
+							IVPNDeskbarView(BRect frame);
+							IVPNDeskbarView(BMessage* archive);
+	virtual					~IVPNDeskbarView();
+
+	static	BArchivable*	Instantiate(BMessage* archive);
+	virtual	status_t		Archive(BMessage* data, bool deep = true) const;
 
 	virtual void			AttachedToWindow();
 	virtual void			DetachedFromWindow();
@@ -42,6 +48,7 @@ private:
 		kConnected,
 	};
 
+	void					_Init();
 	void					_TryConnect();
 	void					_ScheduleRetry();
 	void					_HandleLine(const char* line);
