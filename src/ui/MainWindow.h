@@ -39,6 +39,7 @@ public:
 	virtual					~MainWindow();
 
 	virtual void			MessageReceived(BMessage* message);
+	virtual void			MenusBeginning();
 	virtual bool			QuitRequested();
 
 private:
@@ -67,6 +68,7 @@ private:
 	// actions
 	void					_Connect();
 	void					_Disconnect();
+	void					_ConnectIfPending();
 	void					_Login();
 	void					_OpenServerWindow();
 	void					_ApplyChangedSettings();
@@ -77,6 +79,9 @@ private:
 	void					_UpdateLocationButton();
 	void					_UpdateProtocolControls();
 	void					_UpdateAccountLabel();
+	void					_SetHint(const char* text);
+	void					_KeepOnScreen();
+	void					_SetDeskbarItem(bool show, bool quiet);
 	void					_UpdateServerWindow();
 	std::vector<ServerEntry> _ServerEntries() const;
 	void					_Notify(const char* title, const char* content);
@@ -93,6 +98,9 @@ private:
 	ivpn::PingMap			fPings;
 	bool					fPingRequested;
 	bool					fWireGuardDisabled;
+	bool					fObfsproxyDisabled;
+	bool					fV2RayDisabled;
+	bool					fPendingConnect;	// asked from the Deskbar
 
 	// account
 	BString					fAccountId;
@@ -111,6 +119,7 @@ private:
 	BString					fServerIp;
 	BString					fClientIp;
 	ivpn::VpnType			fConnectedType;
+	ivpn::Obfuscation		fConnectedObfs;
 	time_t					fConnectedSince;
 	BString					fLastError;
 	bool					fFirewallEnabled;
@@ -135,14 +144,17 @@ private:
 	BMenuField*				fProtocolField;
 	BPopUpMenu*				fPortMenu;
 	BMenuField*				fPortField;
+	BPopUpMenu*				fObfsMenu;
+	BMenuField*				fObfsField;
 	BCheckBox*				fFirewallBox;
 	BCheckBox*				fFirewallOnConnectBox;
 	BCheckBox*				fAntiTrackerBox;
 	BCheckBox*				fHardcoreBox;
-	BStringView*			fAccountLabel;
 	BStringView*			fHintLabel;
 
+	BMenuItem*				fAccountItem;
 	BMenuItem*				fNotifyItem;
+	BMenuItem*				fDeskbarItem;
 	BMessenger				fServerWindow;
 };
 

@@ -12,16 +12,21 @@ app all stay in sync.
 - Connect or disconnect, with a live status (green / amber / red) and time connected
 - Choose a location from a searchable list with latency, or Fastest / Random
 - Protocol (WireGuard or OpenVPN) and port
+- Obfuscation, for networks that block VPNs: V2Ray (QUIC or TCP) for
+  WireGuard; obfs3, obfs4 (with IAT modes) or V2Ray for OpenVPN
+- A Deskbar item that shows the connection status (right-click it to
+  connect, disconnect or open the app; **IVPN → Show in Deskbar** turns it
+  on or off)
 - Firewall (kill switch), "firewall on connect", AntiTracker and Hardcore mode
 - Desktop notifications when the connection comes up or drops
-- Changing location, protocol, port or AntiTracker while connected reconnects
+- Changing location, protocol, port, obfuscation or AntiTracker while connected reconnects
   automatically, like the official app
 
 Closing the window does **not** disconnect the VPN; the service keeps running.
 
-Not included yet: multi-hop, split tunnel, custom DNS, obfuscation/V2Ray,
-captcha logins (log in once with `ivpn login` if IVPN asks for one),
-Enhanced App Authentication, and a Deskbar tray icon.
+Not included yet: multi-hop, split tunnel, custom DNS, captcha logins (log
+in once with `ivpn login` if IVPN asks for one), and Enhanced App
+Authentication.
 
 ## Install (Vitruvian 0.6.2 or newer, x86_64 or ARM64)
 
@@ -52,8 +57,8 @@ ivpn status
 saved it, run:
 
 ```sh
-sudo apt install ./ivpn-vitruvian_1.0.1_amd64.deb    # Intel/AMD PCs
-sudo apt install ./ivpn-vitruvian_1.0.1_arm64.deb    # ARM64 machines
+sudo apt install ./ivpn-vitruvian_1.0.2_amd64.deb    # Intel/AMD PCs
+sudo apt install ./ivpn-vitruvian_1.0.2_arm64.deb    # ARM64 machines
 ```
 
 **3. Open it** from the Deskbar: **Applications → IVPN**.

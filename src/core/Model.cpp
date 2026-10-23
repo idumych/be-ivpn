@@ -143,6 +143,128 @@ Port::Label() const
 }
 
 
+// #pragma mark - Obfuscation
+
+
+std::string
+Obfuscation::Label() const
+{
+	switch (v2ray) {
+		case V2Ray::QUIC:	return "V2Ray (QUIC)";
+		case V2Ray::TCP:	return "V2Ray (TCP)";
+		case V2Ray::None:	break;
+	}
+	if (obfsVersion == 3)
+		return "obfs3";
+	if (obfsVersion == 4) {
+		if (obfsIat == 0)
+			return "obfs4";
+		return "obfs4 (IAT " + std::to_string(obfsIat)
+			+ (obfsIat == 2 ? ", paranoid)" : ")");
+	}
+	return "Off";
+}
+
+
+std::vector<Obfuscation>
+ObfuscationChoices(VpnType type)
+{
+	std::vector<Obfuscation> choices;
+	choices.push_back(Obfuscation());
+	if (type == VpnType::OpenVPN) {
+		Obfuscation o;
+		o.obfsVersion = 3;
+		choices.push_back(o);
+		o.obfsVersion = 4;
+		for (int iat = 0; iat <= 2; iat++) {
+			o.obfsIat = iat;
+			choices.push_back(o);
+		}
+	}
+	Obfuscation v;
+	v.v2ray = V2Ray::QUIC;
+	choices.push_back(v);
+	v.v2ray = V2Ray::TCP;
+	choices.push_back(v);
+	return choices;
+}
+
+
+std::vector<Port>
+AllowedPorts(const std::vector<Port>& ports, VpnType type,
+	const Obfuscation& obfs)
+{
+	bool needTcp = false;
+	bool any = false;
+	if (obfs.v2ray == V2Ray::QUIC)
+		needTcp = false;
+	else if (obfs.v2ray == V2Ray::TCP || obfs.UsesObfsproxy())
+		needTcp = true;
+	else if (type == VpnType::WireGuard)
+		needTcp = false;
+	else
+		any = true;	// plain OpenVPN: UDP and TCP
+
+	std::vector<Port> result;
+	for (const Port& p : ports) {
+		if (any || p.tcp == needTcp)
+			result.push_back(p);
+	}
+
+	if (result.empty() && needTcp && type == VpnType::WireGuard) {
+		// IVPN lists no TCP ports for WireGuard; V2Ray (TCP) uses the
+		// WireGuard port numbers over TCP (as the official app does).
+		for (const Port& p : ports) {
+			Port tcp{p.port, true};
+			if (std::find(result.begin(), result.end(), tcp) == result.end())
+				result.push_back(tcp);
+		}
+	}
+	if (result.empty())
+		result.push_back(Port{needTcp ? 443 : 2049, needTcp});
+	return result;
+}
+
+
+Port
+PickPort(const std::vector<Port>& allowed, const Port& current,
+	const Obfuscation& obfs)
+{
+	if (std::find(allowed.begin(), allowed.end(), current) != allowed.end())
+		return current;
+
+	Port recommended;
+	if (obfs.v2ray == V2Ray::QUIC)
+		recommended = Port{443, false};
+	else if (obfs.v2ray == V2Ray::TCP)
+		recommended = Port{80, true};
+	if (obfs.v2ray != V2Ray::None
+		&& std::find(allowed.begin(), allowed.end(), recommended)
+			!= allowed.end())
+		return recommended;
+	return allowed.front();
+}
+
+
+Obfuscation
+ConnectedObfuscation(const json& m)
+{
+	Obfuscation o;
+	int v2ray = Int(m, "V2RayProxy");
+	if (v2ray == (int)V2Ray::QUIC || v2ray == (int)V2Ray::TCP)
+		o.v2ray = (V2Ray)v2ray;
+	if (m.is_object() && m.contains("Obfsproxy")) {
+		const json& obfs = m["Obfsproxy"];
+		int version = Int(obfs, "Version");
+		if (version == 3 || version == 4) {
+			o.obfsVersion = version;
+			o.obfsIat = version == 4 ? Int(obfs, "Obfs4Iat") : 0;
+		}
+	}
+	return o;
+}
+
+
 std::string
 Server::GatewayId() const
 {
@@ -232,9 +354,10 @@ ParseServerList(const json& vpnServers)
 		&& vpnServers["config"].contains("ports"))
 		ports = vpnServers["config"]["ports"];
 
+	// TCP ports are kept for WireGuard too: V2Ray (TCP) uses them
 	lists.wireguardPorts = ParsePorts(
 		ports.is_object() && ports.contains("wireguard")
-			? ports["wireguard"] : json(), false);
+			? ports["wireguard"] : json(), true);
 	lists.openvpnPorts = ParsePorts(
 		ports.is_object() && ports.contains("openvpn")
 			? ports["openvpn"] : json(), true);
@@ -304,6 +427,32 @@ PortToJson(const Port& p)
 }
 
 
+static json
+ObfsToJson(const Obfuscation& o)
+{
+	return json{{"v2ray", (int)o.v2ray}, {"obfsVersion", o.obfsVersion},
+		{"obfsIat", o.obfsIat}};
+}
+
+
+static Obfuscation
+ObfsFromJson(const json& j, VpnType type)
+{
+	Obfuscation o;
+	int v2ray = Int(j, "v2ray");
+	if (v2ray == (int)V2Ray::QUIC || v2ray == (int)V2Ray::TCP)
+		o.v2ray = (V2Ray)v2ray;
+	int version = Int(j, "obfsVersion");
+	if (type == VpnType::OpenVPN && (version == 3 || version == 4)) {
+		o.obfsVersion = version;
+		int iat = Int(j, "obfsIat");
+		if (version == 4 && iat >= 0 && iat <= 2)
+			o.obfsIat = iat;
+	}
+	return o;
+}
+
+
 static Port
 PortFromJson(const json& j, Port fallback)
 {
@@ -328,10 +477,13 @@ Settings::ToJson() const
 		{"gatewayId", gatewayId},
 		{"wireguardPort", PortToJson(wireguardPort)},
 		{"openvpnPort", PortToJson(openvpnPort)},
+		{"wireguardObfuscation", ObfsToJson(wireguardObfs)},
+		{"openvpnObfuscation", ObfsToJson(openvpnObfs)},
 		{"firewallOnConnect", firewallOnConnect},
 		{"antiTracker", antiTracker},
 		{"antiTrackerHardcore", antiTrackerHardcore},
 		{"notifications", notifications},
+		{"deskbarOffered", deskbarOffered},
 	};
 }
 
@@ -356,12 +508,20 @@ Settings::FromJson(const json& j)
 		s.wireguardPort = PortFromJson(j["wireguardPort"], s.wireguardPort);
 	if (j.contains("openvpnPort"))
 		s.openvpnPort = PortFromJson(j["openvpnPort"], s.openvpnPort);
-	s.wireguardPort.tcp = false;	// WireGuard is UDP only
+	if (j.contains("wireguardObfuscation"))
+		s.wireguardObfs = ObfsFromJson(j["wireguardObfuscation"],
+			VpnType::WireGuard);
+	if (j.contains("openvpnObfuscation"))
+		s.openvpnObfs = ObfsFromJson(j["openvpnObfuscation"], VpnType::OpenVPN);
+	// WireGuard runs over TCP only inside V2Ray (TCP)
+	if (s.wireguardObfs.v2ray != V2Ray::TCP)
+		s.wireguardPort.tcp = false;
 	s.firewallOnConnect = Bool(j, "firewallOnConnect", s.firewallOnConnect);
 	s.antiTracker = Bool(j, "antiTracker", s.antiTracker);
 	s.antiTrackerHardcore = Bool(j, "antiTrackerHardcore",
 		s.antiTrackerHardcore);
 	s.notifications = Bool(j, "notifications", s.notifications);
+	s.deskbarOffered = Bool(j, "deskbarOffered", s.deskbarOffered);
 
 	if (s.selection == ServerSelection::Manual && s.gatewayId.empty())
 		s.selection = ServerSelection::Fastest;
@@ -438,10 +598,13 @@ BuildConnectParams(const Settings& settings, const ServerLists& servers,
 			break;
 	}
 
-	const Port& port = settings.PortFor(settings.vpnType);
+	// A stale saved port (e.g. UDP after switching to obfs4) is corrected
+	// here, so the daemon never gets a combination it can't use.
+	const Obfuscation& obfs = settings.ObfsFor(settings.vpnType);
+	Port port = PickPort(AllowedPorts(servers.PortsFor(settings.vpnType),
+		settings.vpnType, obfs), settings.PortFor(settings.vpnType), obfs);
 	json portJson = {
-		{"Protocol", settings.vpnType == VpnType::WireGuard
-			? 0 : (port.tcp ? 1 : 0)},
+		{"Protocol", port.tcp ? 1 : 0},	// 0 = UDP
 		{"Port", port.port},
 	};
 
@@ -465,7 +628,15 @@ BuildConnectParams(const Settings& settings, const ServerLists& servers,
 	json vpnParams = {
 		{"Port", portJson},
 		{"EntryVpnServer", {{"Hosts", chosen->hosts}}},
+		{"V2RayProxy", (int)obfs.v2ray},
 	};
+	if (settings.vpnType == VpnType::OpenVPN) {
+		vpnParams["Obfs4proxy"] = {
+			{"Version", obfs.UsesObfsproxy() ? obfs.obfsVersion : 0},
+			{"Obfs4Iat", obfs.UsesObfsproxy() && obfs.obfsVersion == 4
+				? obfs.obfsIat : 0},
+		};
+	}
 	if (settings.vpnType == VpnType::WireGuard)
 		params["WireGuardParameters"] = vpnParams;
 	else

@@ -16,7 +16,7 @@
 #   STRIP=llvm-strip   (optional)
 set -e
 
-APP_VERSION="1.0.1"
+APP_VERSION="1.0.2"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 OUT="$HERE/build"
 mkdir -p "$OUT"
@@ -91,14 +91,34 @@ say "Linking"
 $CXX -o "$OUT/IVPN" "$OBJ"/*.o $LDFLAGS -Wl,--no-as-needed -lbe -lroot -pthread
 $STRIP "$OUT/IVPN" 2>/dev/null || true
 
+# The Deskbar item is a separate add-on library that Deskbar loads, so its
+# objects are built position-independent. --no-undefined turns a missing
+# symbol into a build error instead of a Deskbar crash.
+say "Building the Deskbar item"
+PIC="$OUT/pic-$ARCH"
+rm -rf "$PIC"
+mkdir -p "$PIC"
+for src in "$HERE"/src/deskbar/*.cpp "$HERE"/src/core/DaemonConnection.cpp \
+		"$HERE"/src/core/Model.cpp "$HERE"/src/ui/DaemonClient.cpp; do
+	echo "   $(basename "$src")"
+	# shellcheck disable=SC2086
+	$CXX -std=c++17 -O2 -g0 -fPIC -Wall -Wno-multichar -Wno-deprecated-copy \
+		$VOS_CFLAGS -c "$src" -o "$PIC/$(basename "$src" .cpp).o"
+done
+# shellcheck disable=SC2086
+$CXX -shared -o "$OUT/IVPNDeskbar.so" "$PIC"/*.o $LDFLAGS \
+	-Wl,--no-undefined -Wl,--no-as-needed -lbe -lroot -pthread
+$STRIP "$OUT/IVPNDeskbar.so" 2>/dev/null || true
+
 # --- package -------------------------------------------------------------
 say "Packaging"
 PKG="$OUT/pkg"
 rm -rf "$PKG"
 mkdir -p "$PKG/DEBIAN" "$PKG/system/apps" \
 	"$PKG/system/data/deskbar/menu/Applications" \
-	"$PKG/system/data/ivpn-vitruvian"
+	"$PKG/system/data/ivpn-vitruvian" "$PKG/system/add-ons/ivpn-vitruvian"
 install -m 755 "$OUT/IVPN" "$PKG/system/apps/IVPN"
+install -m 644 "$OUT/IVPNDeskbar.so" "$PKG/system/add-ons/ivpn-vitruvian/"
 [ "$(od -A n -t x1 -j 18 -N 1 "$OUT/IVPN" | tr -d ' ')" = "$( [ "$ARCH" = arm64 ] && echo b7 || echo 3e)" ] \
 	|| die "Built binary is not $ARCH"
 ln -s /system/apps/IVPN "$PKG/system/data/deskbar/menu/Applications/IVPN"
@@ -116,7 +136,8 @@ Section: net
 Priority: optional
 Description: Native IVPN client for Vitruvian
  A native (Haiku API) window for the IVPN service: connect and disconnect,
- choose a location, protocol and port, firewall and AntiTracker.
+ choose a location, protocol, port and obfuscation (V2Ray, obfs4), firewall
+ and AntiTracker, with a Deskbar item showing the connection status.
  Uses the same ivpn-service as the official app and the ivpn command.
 EOF
 

@@ -63,7 +63,10 @@ public:
 	bool					IsClosing() const { return fClosing; }
 
 	// Builds and sends the "Hello" request. Returns request index or 0.
-	uint32_t				SendHello(const std::string& clientVersion);
+	// 'clientType' is the daemon's ClientTypeEnum: 0 = the main UI,
+	// 3 = other (e.g. the Deskbar item).
+	uint32_t				SendHello(const std::string& clientVersion,
+								int clientType = 0);
 
 	// Fills "Command"-independent fields (Idx, ProtocolSecret) and sends.
 	// 'request' must already contain "Command". Returns request index,

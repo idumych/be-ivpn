@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
 
 #include <Alert.h>
@@ -15,7 +16,9 @@
 #include <CardLayout.h>
 #include <CheckBox.h>
 #include <ControlLook.h>
+#include <Deskbar.h>
 #include <Directory.h>
+#include <Entry.h>
 #include <FindDirectory.h>
 #include <LayoutBuilder.h>
 #include <MenuBar.h>
@@ -27,7 +30,6 @@
 #include <PopUpMenu.h>
 #include <Roster.h>
 #include <Screen.h>
-#include <SeparatorView.h>
 #include <StringView.h>
 #include <TextControl.h>
 
@@ -85,6 +87,17 @@ ProtocolName(VpnType type)
 }
 
 
+// "WireGuard" or "OpenVPN + obfs4"
+static BString
+ProtocolLabel(VpnType type, const Obfuscation& obfs)
+{
+	BString label = ProtocolName(type);
+	if (!obfs.IsOff())
+		label << " + " << obfs.Label().c_str();
+	return label;
+}
+
+
 // #pragma mark -
 
 
@@ -99,6 +112,9 @@ MainWindow::MainWindow()
 	fHelloReceived(false),
 	fPingRequested(false),
 	fWireGuardDisabled(false),
+	fObfsproxyDisabled(false),
+	fV2RayDisabled(false),
+	fPendingConnect(false),
 	fLoginIdx(0),
 	fLogoutIdx(0),
 	fConnectIdx(0),
@@ -112,7 +128,9 @@ MainWindow::MainWindow()
 	fFirewallPersistent(false),
 	fUserDisconnect(false),
 	fReconnecting(false),
-	fNotifyItem(NULL)
+	fAccountItem(NULL),
+	fNotifyItem(NULL),
+	fDeskbarItem(NULL)
 {
 	fSettings.Load(_SettingsPath().String());
 	srandom((unsigned)time(NULL));
@@ -133,8 +151,19 @@ MainWindow::MainWindow()
 	_ShowCard(kCardService);
 	_UpdateProtocolControls();
 	_UpdateLocationButton();
+	_UpdateAccountLabel();
 	_UpdateStatus();
+	ResizeToPreferred();
 	CenterOnScreen();
+	_KeepOnScreen();
+
+	// Put the status item in the Deskbar once; after that it is up to the
+	// user (IVPN > Show in Deskbar).
+	if (!fSettings.deskbarOffered) {
+		fSettings.deskbarOffered = true;
+		_SaveSettings();
+		_SetDeskbarItem(true, true);
+	}
 
 	PostMessage(kMsgTryConnectDaemon);
 }
@@ -174,13 +203,20 @@ MainWindow::_BuildMenuBar()
 	about->SetTarget(be_app);	// AboutRequested() lives on the application
 	app->AddItem(about);
 	app->AddSeparatorItem();
+	fAccountItem = new BMenuItem("", NULL);
+	fAccountItem->SetEnabled(false);
+	app->AddItem(fAccountItem);
+	app->AddItem(new BMenuItem("Open account page" B_UTF8_ELLIPSIS,
+		new BMessage(kMsgOpenAccountPage)));
+	app->AddItem(new BMenuItem("Log out", new BMessage(kMsgLogout)));
+	app->AddSeparatorItem();
 	fNotifyItem = new BMenuItem("Show notifications",
 		new BMessage(kMsgNotifications));
 	fNotifyItem->SetMarked(fSettings.notifications);
 	app->AddItem(fNotifyItem);
-	app->AddItem(new BMenuItem("Open account page" B_UTF8_ELLIPSIS,
-		new BMessage(kMsgOpenAccountPage)));
-	app->AddItem(new BMenuItem("Log out", new BMessage(kMsgLogout)));
+	fDeskbarItem = new BMenuItem("Show in Deskbar",
+		new BMessage(kMsgDeskbarToggle));
+	app->AddItem(fDeskbarItem);
 	app->AddSeparatorItem();
 	app->AddItem(new BMenuItem("Quit", new BMessage(B_QUIT_REQUESTED), 'Q'));
 	bar->AddItem(app);
@@ -304,6 +340,9 @@ MainWindow::_BuildMainCard()
 	fPortMenu = new BPopUpMenu("port");
 	fPortField = new BMenuField("portField", "Port:", fPortMenu);
 
+	fObfsMenu = new BPopUpMenu("obfuscation");
+	fObfsField = new BMenuField("obfsField", "Obfuscation:", fObfsMenu);
+
 	fFirewallBox = new BCheckBox("firewall",
 		"Firewall (block traffic outside the VPN)",
 		new BMessage(kMsgFirewallToggle));
@@ -322,13 +361,11 @@ MainWindow::_BuildMainCard()
 	fHardcoreBox->SetValue(fSettings.antiTrackerHardcore);
 	fHardcoreBox->SetEnabled(fSettings.antiTracker);
 
-	fAccountLabel = new BStringView("accountLabel", "");
 	fHintLabel = new BStringView("hint", "");
 	BFont small(be_plain_font);
 	small.SetSize(be_plain_font->Size() * 0.9f);
-	fAccountLabel->SetFont(&small);
 	fHintLabel->SetFont(&small);
-	fAccountLabel->SetExplicitMaxSize(BSize(B_SIZE_UNLIMITED, B_SIZE_UNSET));
+	fHintLabel->Hide();	// takes no room while empty, see _SetHint()
 
 	BBox* connectionBox = new BBox("connectionBox");
 	connectionBox->SetLabel("Connection");
@@ -338,7 +375,8 @@ MainWindow::_BuildMainCard()
 		.Add(fLocationButton)
 		.AddGrid()
 			.AddMenuField(fProtocolField, 0, 0)
-			.AddMenuField(fPortField, 0, 1)
+			.AddMenuField(fPortField, 2, 0)
+			.AddMenuField(fObfsField, 0, 1, B_ALIGN_HORIZONTAL_UNSET, 1, 3)
 		.End();
 	connectionBox->AddChild(connectionInner);
 
@@ -365,12 +403,7 @@ MainWindow::_BuildMainCard()
 		.Add(fConnectButton)
 		.Add(connectionBox)
 		.Add(privacyBox)
-		.AddGlue()
-		.Add(new BSeparatorView(B_HORIZONTAL))
-		.AddGroup(B_HORIZONTAL)
-			.Add(fAccountLabel)
-			.Add(new BButton("logout", "Log out", new BMessage(kMsgLogout)))
-		.End();
+		.AddGlue();
 	return view;
 }
 
@@ -447,12 +480,38 @@ MainWindow::MessageReceived(BMessage* message)
 				|| (VpnType)type == fSettings.vpnType)
 				break;
 			fSettings.vpnType = (VpnType)type;
+			fSettings.PortFor(fSettings.vpnType) = PickPort(
+				AllowedPorts(fServers.PortsFor(fSettings.vpnType),
+					fSettings.vpnType, fSettings.ObfsFor(fSettings.vpnType)),
+				fSettings.PortFor(fSettings.vpnType),
+				fSettings.ObfsFor(fSettings.vpnType));
 			_UpdateProtocolControls();
 			_UpdateLocationButton();
 			_UpdateServerWindow();
 			fPings.clear();
 			if (fHelloReceived)
 				fDaemon.Send(req::PingServers((int)fSettings.vpnType));
+			_ApplyChangedSettings();
+			break;
+		}
+
+		case kMsgObfsChanged:
+		{
+			int32 index;
+			std::vector<Obfuscation> choices
+				= ObfuscationChoices(fSettings.vpnType);
+			if (message->FindInt32("index", &index) != B_OK || index < 0
+				|| index >= (int32)choices.size()
+				|| choices[index] == fSettings.ObfsFor(fSettings.vpnType))
+				break;
+			const Obfuscation& obfs = choices[index];
+			fSettings.ObfsFor(fSettings.vpnType) = obfs;
+			// obfs4 needs TCP, V2Ray QUIC needs UDP, ...
+			fSettings.PortFor(fSettings.vpnType) = PickPort(
+				AllowedPorts(fServers.PortsFor(fSettings.vpnType),
+					fSettings.vpnType, obfs),
+				fSettings.PortFor(fSettings.vpnType), obfs);
+			_UpdateProtocolControls();
 			_ApplyChangedSettings();
 			break;
 		}
@@ -508,6 +567,15 @@ MainWindow::MessageReceived(BMessage* message)
 			_SaveSettings();
 			break;
 
+		case kMsgDeskbarToggle:
+			_SetDeskbarItem(!BDeskbar().HasItem(IVPN_DESKBAR_ITEM_NAME), false);
+			break;
+
+		case kMsgConnectWhenReady:
+			fPendingConnect = true;
+			_ConnectIfPending();
+			break;
+
 		case kMsgLogin:
 			_Login();
 			break;
@@ -534,7 +602,7 @@ MainWindow::MessageReceived(BMessage* message)
 		case kMsgPingServers:
 			if (fHelloReceived) {
 				fDaemon.Send(req::PingServers((int)fSettings.vpnType));
-				fHintLabel->SetText("Testing server latency" B_UTF8_ELLIPSIS);
+				_SetHint("Testing server latency" B_UTF8_ELLIPSIS);
 			}
 			break;
 
@@ -616,9 +684,10 @@ MainWindow::_HandleDaemonLine(const char* line)
 		_UpdateLocationButton();
 		_UpdateServerWindow();
 		_UpdateStatus();
+		_ConnectIfPending();
 	} else if (command == "PingServersResp") {
 		UpdatePings(fPings, m.value("PingResults", json::array()));
-		fHintLabel->SetText("");
+		_SetHint("");
 		_UpdateLocationButton();
 		_UpdateServerWindow();
 	} else if (command == "VpnStateResp") {
@@ -683,6 +752,15 @@ MainWindow::_HandleHello(const json& m)
 	fWireGuardDisabled = !JStr(disabled, "WireGuardError").empty();
 	if (fWireGuardDisabled && fSettings.vpnType == VpnType::WireGuard)
 		fSettings.vpnType = VpnType::OpenVPN;
+	// obfs4proxy and V2Ray are separate helpers the service may lack
+	fObfsproxyDisabled = !JStr(disabled, "ObfsproxyError").empty();
+	fV2RayDisabled = !JStr(disabled, "V2RayError").empty();
+	for (VpnType type : {VpnType::WireGuard, VpnType::OpenVPN}) {
+		Obfuscation& obfs = fSettings.ObfsFor(type);
+		if ((fV2RayDisabled && obfs.v2ray != V2Ray::None)
+			|| (fObfsproxyDisabled && obfs.UsesObfsproxy()))
+			obfs = Obfuscation();
+	}
 
 	const json& session = m.value("Session", json::object());
 	fAccountId = JStr(session, "AccountID").c_str();
@@ -706,6 +784,7 @@ MainWindow::_HandleHello(const json& m)
 		fPingRequested = true;
 		fDaemon.Send(req::PingServers((int)fSettings.vpnType));
 	}
+	_ConnectIfPending();
 }
 
 
@@ -735,6 +814,7 @@ MainWindow::_HandleLoginResponse(const json& m)
 				fPingRequested = true;
 				fDaemon.Send(req::PingServers((int)fSettings.vpnType));
 			}
+			_ConnectIfPending();
 			return;
 		}
 
@@ -800,6 +880,7 @@ MainWindow::_HandleConnected(const json& m)
 	fServerIp = serverIp;
 	fClientIp = JStr(m, "ClientIP").c_str();
 	fConnectedType = (VpnType)JInt(m, "VpnType", (int)fSettings.vpnType);
+	fConnectedObfs = ConnectedObfuscation(m);
 	fConnectedSince = (time_t)JInt(m, "TimeSecFrom1970", time(NULL));
 
 	if (const Server* s = fServers.FindByHost(serverIp.String())) {
@@ -947,6 +1028,18 @@ MainWindow::_Disconnect()
 
 
 void
+MainWindow::_ConnectIfPending()
+{
+	if (!fPendingConnect || !fHelloReceived || fAccountId.IsEmpty()
+		|| fServers.Empty())
+		return;
+	fPendingConnect = false;
+	if (fState == kDisconnected)
+		_Connect();
+}
+
+
+void
 MainWindow::_Login()
 {
 	if (!fHelloReceived)
@@ -1054,8 +1147,9 @@ MainWindow::_UpdateStatus()
 			detail.SetToFormat("%s %s %s %s %s",
 				fConnectedServer.IsEmpty()
 					? fConnectedHost.String() : fConnectedServer.String(),
-				"\xC2\xB7", ProtocolName(fConnectedType), "\xC2\xB7",
-				duration.String());
+				"\xC2\xB7",
+				ProtocolLabel(fConnectedType, fConnectedObfs).String(),
+				"\xC2\xB7", duration.String());
 			fConnectButton->SetLabel("Disconnect");
 			fConnectButton->SetEnabled(true);
 			break;
@@ -1095,6 +1189,7 @@ MainWindow::_UpdateStatus()
 	fStatusView->SetStatus(level, headline.String(), detail.String());
 	fProtocolField->SetEnabled(fState != kDisconnecting);
 	fPortField->SetEnabled(fState != kDisconnecting);
+	fObfsField->SetEnabled(fState != kDisconnecting);
 }
 
 
@@ -1148,12 +1243,36 @@ MainWindow::_UpdateProtocolControls()
 			item->SetEnabled(!fWireGuardDisabled);
 	}
 
+	const Obfuscation& obfs = fSettings.ObfsFor(fSettings.vpnType);
+	while (BMenuItem* item = fObfsMenu->RemoveItem((int32)0))
+		delete item;
+	std::vector<Obfuscation> choices = ObfuscationChoices(fSettings.vpnType);
+	for (size_t i = 0; i < choices.size(); i++) {
+		BMessage* msg = new BMessage(kMsgObfsChanged);
+		msg->AddInt32("index", (int32)i);
+		BMenuItem* item = new BMenuItem(choices[i].Label().c_str(), msg);
+		item->SetMarked(choices[i] == obfs);
+		if (choices[i].v2ray != V2Ray::None)
+			item->SetEnabled(!fV2RayDisabled);
+		else if (choices[i].UsesObfsproxy())
+			item->SetEnabled(!fObfsproxyDisabled);
+		fObfsMenu->AddItem(item);
+	}
+
 	while (BMenuItem* item = fPortMenu->RemoveItem((int32)0))
 		delete item;
 
-	std::vector<Port> ports = fServers.PortsFor(fSettings.vpnType);
-	const Port& current = fSettings.PortFor(fSettings.vpnType);
-	if (std::find(ports.begin(), ports.end(), current) == ports.end())
+	std::vector<Port> ports = AllowedPorts(fServers.PortsFor(fSettings.vpnType),
+		fSettings.vpnType, obfs);
+	Port& current = fSettings.PortFor(fSettings.vpnType);
+	if (!fServers.Empty()) {
+		// the list is known: a port that doesn't fit the obfuscation goes
+		Port picked = PickPort(ports, current, obfs);
+		if (!(picked == current)) {
+			current = picked;
+			_SaveSettings();
+		}
+	} else if (std::find(ports.begin(), ports.end(), current) == ports.end())
 		ports.insert(ports.begin(), current);
 
 	for (const Port& p : ports) {
@@ -1170,7 +1289,7 @@ MainWindow::_UpdateProtocolControls()
 void
 MainWindow::_UpdateAccountLabel()
 {
-	BString text;
+	BString text = "Not logged in";
 	if (!fAccountId.IsEmpty()) {
 		text.SetToFormat("Account: %s", fAccountId.String());
 		std::string plan = JStr(fAccount, "CurrentPlan");
@@ -1187,7 +1306,65 @@ MainWindow::_UpdateAccountLabel()
 				: ", expired ") << date;
 		}
 	}
-	fAccountLabel->SetText(text);
+	fAccountItem->SetLabel(text);
+}
+
+
+void
+MainWindow::_SetHint(const char* text)
+{
+	fHintLabel->SetText(text);
+	if (text[0] == '\0' && !fHintLabel->IsHidden())
+		fHintLabel->Hide();
+	else if (text[0] != '\0' && fHintLabel->IsHidden())
+		fHintLabel->Show();
+}
+
+
+// Small screens (800x600): never let the window hang off the bottom.
+void
+MainWindow::_KeepOnScreen()
+{
+	BRect screen = BScreen(this).Frame();
+	BRect decorated = DecoratorFrame();
+	float top = screen.top + (Frame().top - decorated.top);
+	if (decorated.bottom > screen.bottom || decorated.top < screen.top) {
+		float y = screen.bottom - (decorated.bottom - Frame().top);
+		MoveTo(Frame().left, std::max(top, y));
+	}
+}
+
+
+void
+MainWindow::_SetDeskbarItem(bool show, bool quiet)
+{
+	BDeskbar deskbar;
+	if (!show) {
+		deskbar.RemoveItem(IVPN_DESKBAR_ITEM_NAME);
+		return;
+	}
+	if (deskbar.HasItem(IVPN_DESKBAR_ITEM_NAME))
+		return;
+
+	entry_ref ref;
+	status_t status = get_ref_for_path(IVPN_DESKBAR_ADDON_PATH, &ref);
+	if (status == B_OK)
+		status = deskbar.AddItem(&ref);
+	if (status != B_OK && !quiet) {
+		BString text;
+		text.SetToFormat("Could not add IVPN to the Deskbar:\n%s",
+			strerror(status));
+		(new BAlert("deskbar", text, "OK", NULL, NULL, B_WIDTH_AS_USUAL,
+			B_STOP_ALERT))->Go(NULL);
+	}
+}
+
+
+void
+MainWindow::MenusBeginning()
+{
+	fDeskbarItem->SetMarked(BDeskbar().HasItem(IVPN_DESKBAR_ITEM_NAME));
+	BWindow::MenusBeginning();
 }
 
 

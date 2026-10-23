@@ -66,6 +66,43 @@ struct Port {
 		{ return port == o.port && tcp == o.tcp; }
 };
 
+// Values match the daemon's v2r.V2RayTransportType
+enum class V2Ray : int {
+	None = 0,
+	QUIC = 1,
+	TCP = 2,
+};
+
+// Obfuscation for one protocol. obfsproxy (obfs3/obfs4) exists for OpenVPN
+// only; V2Ray takes precedence over it, as in the daemon.
+struct Obfuscation {
+	V2Ray	v2ray = V2Ray::None;
+	int		obfsVersion = 0;	// 0 = off, 3 = obfs3, 4 = obfs4
+	int		obfsIat = 0;		// obfs4 inter-arrival time mode, 0..2
+
+	bool		IsOff() const
+					{ return v2ray == V2Ray::None && obfsVersion == 0; }
+	bool		UsesObfsproxy() const
+					{ return v2ray == V2Ray::None && obfsVersion != 0; }
+	std::string	Label() const;	// "Off", "obfs4 (IAT 1)", "V2Ray (QUIC)"
+	bool operator==(const Obfuscation& o) const
+		{ return v2ray == o.v2ray && obfsVersion == o.obfsVersion
+			&& obfsIat == o.obfsIat; }
+};
+
+// Obfuscation choices for 'type', in menu order ("Off" first).
+std::vector<Obfuscation>	ObfuscationChoices(VpnType type);
+
+// The ports from 'ports' usable with 'obfs' (same rules as the official
+// app): V2Ray QUIC needs UDP, V2Ray TCP and obfsproxy need TCP, plain
+// WireGuard is UDP only. Never empty.
+std::vector<Port>	AllowedPorts(const std::vector<Port>& ports, VpnType type,
+						const Obfuscation& obfs);
+// 'current' when it is allowed, otherwise the recommended port for 'obfs'
+// (UDP 443 for V2Ray QUIC, TCP 80 for V2Ray TCP) or the first allowed one.
+Port				PickPort(const std::vector<Port>& allowed,
+						const Port& current, const Obfuscation& obfs);
+
 struct Server {
 	std::string		gateway;		// e.g. "nl.wg.ivpn.net"
 	std::string		countryCode;	// "NL"
@@ -118,15 +155,22 @@ struct Settings {
 	std::string		gatewayId;			// used when selection == Manual
 	Port			wireguardPort;		// UDP 2049
 	Port			openvpnPort;		// UDP 2049
+	Obfuscation		wireguardObfs;
+	Obfuscation		openvpnObfs;
 	bool			firewallOnConnect = false;
 	bool			antiTracker = false;
 	bool			antiTrackerHardcore = false;
 	bool			notifications = true;
+	bool			deskbarOffered = false;	// Deskbar item added once
 
 	Port&			PortFor(VpnType t)
 		{ return t == VpnType::WireGuard ? wireguardPort : openvpnPort; }
 	const Port&		PortFor(VpnType t) const
 		{ return t == VpnType::WireGuard ? wireguardPort : openvpnPort; }
+	Obfuscation&	ObfsFor(VpnType t)
+		{ return t == VpnType::WireGuard ? wireguardObfs : openvpnObfs; }
+	const Obfuscation& ObfsFor(VpnType t) const
+		{ return t == VpnType::WireGuard ? wireguardObfs : openvpnObfs; }
 
 	nlohmann::json	ToJson() const;
 	static Settings	FromJson(const nlohmann::json& j);
@@ -142,6 +186,10 @@ nlohmann::json		BuildConnectParams(const Settings& settings,
 						const ServerLists& servers, const PingMap& pings,
 						unsigned randomSeed, const Server** chosen,
 						std::string& error);
+
+// Obfuscation in use, from the "V2RayProxy" and "Obfsproxy" fields of the
+// daemon's ConnectedResp.
+Obfuscation			ConnectedObfuscation(const nlohmann::json& connectedResp);
 
 std::string			StateDescription(int stateVal);
 

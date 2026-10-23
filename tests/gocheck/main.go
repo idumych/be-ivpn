@@ -68,13 +68,13 @@ func main() {
 				fmt.Println("FAIL: WG hosts lost in decoding")
 				os.Exit(1)
 			}
-			fmt.Printf("OK %s: WireGuard host=%s port=%d sel=%d\n", f, p.WireGuardParameters.EntryVpnServer.Hosts[0].Hostname, p.WireGuardParameters.Port.Port, p.Metadata.ServerSelectionEntry)
+			fmt.Printf("OK %s: WireGuard host=%s port=%d proto=%d sel=%d v2ray=%d\n", f, p.WireGuardParameters.EntryVpnServer.Hosts[0].Hostname, p.WireGuardParameters.Port.Port, p.WireGuardParameters.Port.Protocol, p.Metadata.ServerSelectionEntry, p.WireGuardParameters.V2RayProxy)
 		} else {
 			if len(p.OpenVpnParameters.EntryVpnServer.Hosts) == 0 {
 				fmt.Println("FAIL: OpenVPN hosts lost")
 				os.Exit(1)
 			}
-			fmt.Printf("OK %s: OpenVPN host=%s port=%d proto=%d\n", f, p.OpenVpnParameters.EntryVpnServer.Hosts[0].Hostname, p.OpenVpnParameters.Port.Port, p.OpenVpnParameters.Port.Protocol)
+			fmt.Printf("OK %s: OpenVPN host=%s port=%d proto=%d obfs=%s v2ray=%d\n", f, p.OpenVpnParameters.EntryVpnServer.Hosts[0].Hostname, p.OpenVpnParameters.Port.Port, p.OpenVpnParameters.Port.Protocol, p.OpenVpnParameters.Obfs4proxy.ToString(), p.OpenVpnParameters.V2RayProxy)
 		}
 	}
 }

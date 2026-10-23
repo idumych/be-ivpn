@@ -11,6 +11,7 @@
 #include <String.h>
 
 #include "../core/DaemonConnection.h"
+#include "Constants.h"
 
 class DaemonClient {
 public:
@@ -18,7 +19,10 @@ public:
 							~DaemonClient();
 
 	// Reads port.txt, connects and sends Hello. On failure fills 'error'.
-	bool					Connect(BString& error);
+	bool					Connect(BString& error,
+								const char* clientVersion
+									= IVPN_APP_VERSION ":Vitruvian UI",
+								int clientType = 0);
 	void					Disconnect();
 	bool					IsConnected() const
 								{ return fConnection.IsConnected(); }

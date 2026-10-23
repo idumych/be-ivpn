@@ -185,11 +185,11 @@ DaemonConnection::Connect(const PortInfo& info, LineCallback onLine,
 
 
 uint32_t
-DaemonConnection::SendHello(const std::string& clientVersion)
+DaemonConnection::SendHello(const std::string& clientVersion, int clientType)
 {
 	nlohmann::json hello = {
 		{"Command", "Hello"},
-		{"ClientType", 0},		// 0 = UI client
+		{"ClientType", clientType},
 		{"Version", clientVersion},
 		{"Secret", fSecret},	// uint64, must be sent as a JSON number
 		{"GetServersList", true},

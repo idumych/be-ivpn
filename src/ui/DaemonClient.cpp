@@ -23,7 +23,8 @@ DaemonClient::~DaemonClient()
 
 
 bool
-DaemonClient::Connect(BString& error)
+DaemonClient::Connect(BString& error, const char* clientVersion,
+	int clientType)
 {
 	Disconnect();
 
@@ -63,7 +64,7 @@ DaemonClient::Connect(BString& error)
 		return false;
 	}
 
-	if (fConnection.SendHello(IVPN_APP_VERSION ":Vitruvian UI") == 0) {
+	if (fConnection.SendHello(clientVersion, clientType) == 0) {
 		error = "Could not talk to the IVPN service.";
 		fConnection.Close();
 		return false;

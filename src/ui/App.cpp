@@ -18,7 +18,8 @@ public:
 	IVPNApp()
 		:
 		BApplication(IVPN_APP_SIGNATURE),
-		fWindow(NULL)
+		fWindow(NULL),
+		fPendingConnect(false)
 	{
 	}
 
@@ -26,6 +27,29 @@ public:
 	{
 		fWindow = new MainWindow();
 		fWindow->Show();
+		if (fPendingConnect)
+			fWindow->PostMessage(kMsgConnectWhenReady);
+	}
+
+	virtual void MessageReceived(BMessage* message)
+	{
+		switch (message->what) {
+			case kMsgConnectWhenReady:
+				// from the Deskbar item; may arrive before ReadyToRun()
+				if (fWindow == NULL) {
+					fPendingConnect = true;
+					break;
+				}
+				fWindow->PostMessage(kMsgConnectWhenReady);
+				_ActivateWindow();
+				break;
+			case B_SILENT_RELAUNCH:
+				// launched again (e.g. "Open IVPN" in the Deskbar item)
+				_ActivateWindow();
+				break;
+			default:
+				BApplication::MessageReceived(message);
+		}
 	}
 
 	virtual void AboutRequested()
@@ -43,7 +67,16 @@ public:
 	}
 
 private:
+	void _ActivateWindow()
+	{
+		if (fWindow != NULL && fWindow->Lock()) {
+			fWindow->Activate();
+			fWindow->Unlock();
+		}
+	}
+
 	MainWindow*	fWindow;
+	bool		fPendingConnect;
 };
 
 

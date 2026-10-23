@@ -93,10 +93,11 @@ TestServerParsing()
 	CHECK(lists.wireguard[0].DisplayName() == "Amsterdam, Netherlands");
 	CHECK(lists.wireguard[0].hosts.size() == 2);
 
-	// WireGuard: UDP only, deduped, ranges skipped, sorted
-	CHECK(lists.wireguardPorts.size() == 2);
+	// WireGuard: deduped, ranges skipped, UDP first (TCP kept for V2Ray)
+	CHECK(lists.wireguardPorts.size() == 3);
 	CHECK(lists.wireguardPorts[0].port == 53);
 	CHECK(lists.wireguardPorts[1].port == 2049);
+	CHECK(lists.wireguardPorts[2].Label() == "TCP 443");
 	// OpenVPN: UDP first, then TCP sorted
 	CHECK(lists.openvpnPorts.size() == 3);
 	CHECK(!lists.openvpnPorts[0].tcp && lists.openvpnPorts[0].port == 2049);
@@ -138,6 +139,61 @@ TestPings()
 
 
 static void
+TestObfuscation()
+{
+	ServerLists lists = ParseServerList(SampleServers());
+	const std::vector<Port>& wg = lists.wireguardPorts;
+	const std::vector<Port>& ovpn = lists.openvpnPorts;
+
+	CHECK(ObfuscationChoices(VpnType::WireGuard).size() == 3);
+	std::vector<Obfuscation> choices = ObfuscationChoices(VpnType::OpenVPN);
+	CHECK(choices.size() == 7);
+	CHECK(choices[0].IsOff() && choices[0].Label() == "Off");
+	CHECK(choices[1].Label() == "obfs3");
+	CHECK(choices[2].Label() == "obfs4");
+	CHECK(choices[4].Label() == "obfs4 (IAT 2, paranoid)");
+	CHECK(choices[6].Label() == "V2Ray (TCP)");
+
+	Obfuscation off, quic, tcp, obfs4;
+	quic.v2ray = V2Ray::QUIC;
+	tcp.v2ray = V2Ray::TCP;
+	obfs4.obfsVersion = 4;
+	obfs4.obfsIat = 1;
+
+	// plain WireGuard: UDP only; plain OpenVPN: everything
+	std::vector<Port> a = AllowedPorts(wg, VpnType::WireGuard, off);
+	CHECK(a.size() == 2 && !a[0].tcp && !a[1].tcp);
+	CHECK(AllowedPorts(ovpn, VpnType::OpenVPN, off).size() == 3);
+	// V2Ray QUIC: UDP; V2Ray TCP and obfsproxy: TCP
+	a = AllowedPorts(ovpn, VpnType::OpenVPN, quic);
+	CHECK(a.size() == 1 && !a[0].tcp);
+	a = AllowedPorts(ovpn, VpnType::OpenVPN, obfs4);
+	CHECK(a.size() == 2 && a[0].tcp && a[1].tcp);
+	a = AllowedPorts(wg, VpnType::WireGuard, tcp);
+	CHECK(a.size() == 1 && a[0] == (Port{443, true}));
+	// no TCP ports listed for WireGuard: UDP port numbers over TCP
+	std::vector<Port> udpOnly = {Port{2049, false}, Port{53, false}};
+	a = AllowedPorts(udpOnly, VpnType::WireGuard, tcp);
+	CHECK(a.size() == 2 && a[0] == (Port{2049, true}));
+
+	// keep an allowed port, otherwise the recommended one
+	CHECK(PickPort(AllowedPorts(ovpn, VpnType::OpenVPN, tcp), Port{443, true},
+		tcp) == (Port{443, true}));
+	CHECK(PickPort(AllowedPorts(ovpn, VpnType::OpenVPN, tcp), Port{2049, false},
+		tcp) == (Port{80, true}));
+	CHECK(PickPort(AllowedPorts(ovpn, VpnType::OpenVPN, obfs4),
+		Port{2049, false}, obfs4).tcp);
+
+	Obfuscation fromResp = ConnectedObfuscation(json::parse(
+		R"({"V2RayProxy":0,"Obfsproxy":{"Version":4,"Obfs4Iat":2}})"));
+	CHECK(fromResp.obfsVersion == 4 && fromResp.obfsIat == 2);
+	CHECK(ConnectedObfuscation(json::parse(R"({"V2RayProxy":1})")).v2ray
+		== V2Ray::QUIC);
+	CHECK(ConnectedObfuscation(json::object()).IsOff());
+}
+
+
+static void
 TestSettings()
 {
 	Settings s;
@@ -145,6 +201,10 @@ TestSettings()
 	s.selection = ServerSelection::Manual;
 	s.gatewayId = "nl";
 	s.openvpnPort = Port{443, true};
+	s.openvpnObfs.obfsVersion = 4;
+	s.openvpnObfs.obfsIat = 2;
+	s.wireguardObfs.v2ray = V2Ray::TCP;
+	s.wireguardPort = Port{443, true};
 	s.firewallOnConnect = true;
 	s.antiTracker = true;
 
@@ -159,6 +219,9 @@ TestSettings()
 	CHECK(loaded.selection == ServerSelection::Manual);
 	CHECK(loaded.gatewayId == "nl");
 	CHECK(loaded.openvpnPort == (Port{443, true}));
+	CHECK(loaded.openvpnObfs == s.openvpnObfs);
+	CHECK(loaded.wireguardObfs.v2ray == V2Ray::TCP);
+	CHECK(loaded.wireguardPort == (Port{443, true}));	// TCP kept for V2Ray
 	CHECK(loaded.firewallOnConnect && loaded.antiTracker);
 
 	// garbage / bad values fall back to defaults
@@ -167,6 +230,12 @@ TestSettings()
 	CHECK(bad.vpnType == VpnType::WireGuard);
 	CHECK(bad.selection == ServerSelection::Fastest);	// manual w/o gateway
 	CHECK(bad.wireguardPort.port == 2049 && !bad.wireguardPort.tcp);
+	// obfsproxy is OpenVPN only; unknown values are dropped
+	Settings badObfs = Settings::FromJson(json::parse(
+		R"({"wireguardObfuscation":{"v2ray":9,"obfsVersion":4},
+			"openvpnObfuscation":{"obfsVersion":4,"obfsIat":7}})"));
+	CHECK(badObfs.wireguardObfs.IsOff());
+	CHECK(badObfs.openvpnObfs.obfsVersion == 4 && badObfs.openvpnObfs.obfsIat == 0);
 
 	std::ofstream(path) << "{ not json";
 	Settings junk;
@@ -195,6 +264,8 @@ TestConnectParams()
 	CHECK(p["WireGuardParameters"]["EntryVpnServer"]["Hosts"][0]["public_key"]
 		== "AsMT2FqpkZbjzWeDch6GwufF5odl259W/hIkGytVfWo=");
 	CHECK(!p.contains("OpenVpnParameters"));
+	CHECK(p["WireGuardParameters"]["V2RayProxy"] == 0);
+	CHECK(!p["WireGuardParameters"].contains("Obfs4proxy"));
 
 	s.vpnType = VpnType::OpenVPN;
 	s.selection = ServerSelection::Manual;
@@ -208,6 +279,36 @@ TestConnectParams()
 	CHECK(p["OpenVpnParameters"]["Port"]["Port"] == 443);
 	CHECK(p["Metadata"]["AntiTracker"]["Hardcore"] == true);
 	CHECK(chosen->gateway == "nl.gw.ivpn.net");
+	CHECK(p["OpenVpnParameters"]["Obfs4proxy"]["Version"] == 0);
+
+	// obfs4 with a saved UDP port: corrected to TCP
+	s.openvpnObfs.obfsVersion = 4;
+	s.openvpnObfs.obfsIat = 1;
+	s.openvpnPort = Port{2049, false};
+	p = BuildConnectParams(s, lists, pings, 0, &chosen, error);
+	CHECK(p["OpenVpnParameters"]["Obfs4proxy"]["Version"] == 4);
+	CHECK(p["OpenVpnParameters"]["Obfs4proxy"]["Obfs4Iat"] == 1);
+	CHECK(p["OpenVpnParameters"]["Port"]["Protocol"] == 1);
+	CHECK(p["OpenVpnParameters"]["V2RayProxy"] == 0);
+	// V2Ray takes precedence: obfsproxy not sent
+	s.openvpnObfs.v2ray = V2Ray::QUIC;
+	p = BuildConnectParams(s, lists, pings, 0, &chosen, error);
+	CHECK(p["OpenVpnParameters"]["V2RayProxy"] == 1);
+	CHECK(p["OpenVpnParameters"]["Obfs4proxy"]["Version"] == 0);
+	CHECK(p["OpenVpnParameters"]["Port"]["Protocol"] == 0);
+	s.openvpnObfs = Obfuscation();
+
+	// WireGuard over V2Ray (TCP) uses a TCP port
+	s.vpnType = VpnType::WireGuard;
+	s.selection = ServerSelection::Fastest;
+	s.wireguardObfs.v2ray = V2Ray::TCP;
+	p = BuildConnectParams(s, lists, pings, 0, &chosen, error);
+	CHECK(p["WireGuardParameters"]["V2RayProxy"] == 2);
+	CHECK(p["WireGuardParameters"]["Port"]["Protocol"] == 1);
+	CHECK(p["WireGuardParameters"]["Port"]["Port"] == 443);
+	s.wireguardObfs = Obfuscation();
+	s.vpnType = VpnType::OpenVPN;
+	s.selection = ServerSelection::Manual;
 
 	s.gatewayId = "us-ca";	// no OpenVPN server there
 	p = BuildConnectParams(s, lists, pings, 0, &chosen, error);
@@ -231,6 +332,14 @@ TestConnectParams()
 	s.vpnType = VpnType::OpenVPN;
 	s.openvpnPort = Port{443, true};
 	std::ofstream("connect_ovpn.json")
+		<< wrap(BuildConnectParams(s, lists, pings, 0, nullptr, error));
+	s.openvpnObfs.obfsVersion = 4;
+	s.openvpnObfs.obfsIat = 2;
+	std::ofstream("connect_ovpn_obfs4.json")
+		<< wrap(BuildConnectParams(s, lists, pings, 0, nullptr, error));
+	s.vpnType = VpnType::WireGuard;
+	s.wireguardObfs.v2ray = V2Ray::QUIC;
+	std::ofstream("connect_wg_v2ray.json")
 		<< wrap(BuildConnectParams(s, lists, pings, 0, nullptr, error));
 }
 
@@ -371,6 +480,7 @@ main(int argc, char** argv)
 	TestPortFile();
 	TestServerParsing();
 	TestPings();
+	TestObfuscation();
 	TestSettings();
 	TestConnectParams();
 	if (argc > 1)

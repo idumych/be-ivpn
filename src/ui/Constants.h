@@ -9,7 +9,11 @@
 
 #define IVPN_APP_SIGNATURE	"application/x-vnd.IVPN-Client"
 #define IVPN_APP_NAME		"IVPN"
-#define IVPN_APP_VERSION	"1.0.1"
+#define IVPN_APP_VERSION	"1.0.2"
+
+// The Deskbar item: an add-on library Deskbar loads (see src/deskbar)
+#define IVPN_DESKBAR_ITEM_NAME	"IVPN"
+#define IVPN_DESKBAR_ADDON_PATH	"/system/add-ons/ivpn-vitruvian/IVPNDeskbar.so"
 
 enum {
 	// DaemonClient -> MainWindow
@@ -25,6 +29,7 @@ enum {
 	kMsgChooseServer		= 'mSrv',
 	kMsgProtocolChanged		= 'mPrt',
 	kMsgPortChanged			= 'mPor',
+	kMsgObfsChanged			= 'mObf',	// "index" int32 into the choices
 	kMsgFirewallToggle		= 'mFw ',
 	kMsgFirewallOnConnect	= 'mFwC',
 	kMsgAntiTracker			= 'mAT ',
@@ -36,6 +41,10 @@ enum {
 	kMsgRefreshServers		= 'mRfS',
 	kMsgPingServers			= 'mPng',
 	kMsgOpenAccountPage		= 'mWeb',
+	kMsgDeskbarToggle		= 'mDsk',
+
+	// Deskbar item -> application (also as a launch message)
+	kMsgConnectWhenReady	= 'aCon',
 
 	// ServerListWindow -> MainWindow
 	kMsgServerChosen		= 'sChs',	// "selection" int32, "gateway" str

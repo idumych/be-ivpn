@@ -22,5 +22,5 @@ cd "$WORK"
 ./core_test "$WORK/port.txt"
 
 if [ -n "$IVPN_GOCHECK" ]; then
-	"$IVPN_GOCHECK" "$WORK/hello.json" "$WORK/connect_wg.json" "$WORK/connect_ovpn.json" "$WORK"/req_*.json
+	"$IVPN_GOCHECK" "$WORK/hello.json" "$WORK"/connect_*.json "$WORK"/req_*.json
 fi
