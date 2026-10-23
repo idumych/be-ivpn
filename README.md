@@ -52,8 +52,8 @@ ivpn status
 saved it, run:
 
 ```sh
-sudo apt install ./ivpn-vitruvian_1.0.0_amd64.deb    # Intel/AMD PCs
-sudo apt install ./ivpn-vitruvian_1.0.0_arm64.deb    # ARM64 machines
+sudo apt install ./ivpn-vitruvian_1.0.1_amd64.deb    # Intel/AMD PCs
+sudo apt install ./ivpn-vitruvian_1.0.1_arm64.deb    # ARM64 machines
 ```
 
 **3. Open it** from the Deskbar: **Applications → IVPN**.

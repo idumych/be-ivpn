@@ -1,0 +1,75 @@
+name: build
+
+# Builds the amd64 and arm64 .deb packages natively in Debian trixie
+# (VitruvianOS's userland), linking against libbe/libroot built from the
+# VitruvianOS 0.6.2 source. Run by hand, or on a v* tag push, which also
+# attaches the packages and SHA256SUMS to that tag's release (created as a
+# prerelease if it doesn't exist yet).
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  deb:
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    container: debian:trixie
+    steps:
+      - name: Install build tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates git \
+            cmake ninja-build g++ gcc bison flex m4 make pkg-config python3 \
+            libicu-dev libxkbcommon-dev libudev-dev libsystemd-dev libblkid-dev
+      - uses: actions/checkout@v4
+      - name: Core tests
+        run: sh tests/run_tests.sh
+      - uses: actions/cache@v4
+        with:
+          path: .vos-sdk
+          key: vos-sdk-0.6.2-${{ matrix.arch }}-${{ hashFiles('tools/vos-sdk/*') }}
+      - name: VitruvianOS SDK
+        run: sh tools/vos-sdk/make-sdk.sh .vos-sdk
+      - name: Build .deb
+        run: |
+          . .vos-sdk/sdk/env.sh
+          ./build.sh
+          ls -l ivpn-vitruvian_*_${{ matrix.arch }}.deb
+          dpkg-deb -I ivpn-vitruvian_*_${{ matrix.arch }}.deb
+          objdump -T build/IVPN | grep -oE 'GLIBC_[0-9.]+' | sort -Vu | tail -1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ matrix.arch }}
+          path: ivpn-vitruvian_*_${{ matrix.arch }}.deb
+
+  release:
+    needs: deb
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - name: Attach to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha256sum ivpn-vitruvian_*.deb > SHA256SUMS
+          cat SHA256SUMS
+          # New releases start as prereleases; mark them final after testing.
+          gh release view "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" \
+              --verify-tag --prerelease --title "$GITHUB_REF_NAME" \
+              --notes "See the README for install steps."
+          gh release upload "$GITHUB_REF_NAME" ivpn-vitruvian_*.deb SHA256SUMS \
+            --clobber -R "$GITHUB_REPOSITORY"

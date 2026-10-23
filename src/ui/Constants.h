@@ -9,7 +9,7 @@
 
 #define IVPN_APP_SIGNATURE	"application/x-vnd.IVPN-Client"
 #define IVPN_APP_NAME		"IVPN"
-#define IVPN_APP_VERSION	"1.0.0"
+#define IVPN_APP_VERSION	"1.0.1"
 
 enum {
 	// DaemonClient -> MainWindow

@@ -10,7 +10,8 @@ RDEF=/system/data/ivpn-vitruvian/IVPN.rdef
 if [ "$1" = "configure" ]; then
 	if command -v rc >/dev/null 2>&1 && command -v xres >/dev/null 2>&1 \
 		&& command -v resattr >/dev/null 2>&1 && [ -f "$RDEF" ]; then
-		RSRC="$(mktemp)"
+		# rc appends ".rsrc" to an output name that lacks it.
+		RSRC="$(mktemp --suffix=.rsrc)"
 		if rc "$RDEF" -o "$RSRC" >/dev/null 2>&1; then
 			xres -o "$APP" "$RSRC" >/dev/null 2>&1 || true
 			resattr -O -o "$APP" "$RSRC" >/dev/null 2>&1 || true
