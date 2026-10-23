@@ -169,8 +169,10 @@ MainWindow::_BuildMenuBar()
 	BMenuBar* bar = new BMenuBar("menu");
 
 	BMenu* app = new BMenu(IVPN_APP_NAME);
-	app->AddItem(new BMenuItem("About IVPN" B_UTF8_ELLIPSIS,
-		new BMessage(B_ABOUT_REQUESTED)));
+	BMenuItem* about = new BMenuItem("About IVPN" B_UTF8_ELLIPSIS,
+		new BMessage(B_ABOUT_REQUESTED));
+	about->SetTarget(be_app);	// AboutRequested() lives on the application
+	app->AddItem(about);
 	app->AddSeparatorItem();
 	fNotifyItem = new BMenuItem("Show notifications",
 		new BMessage(kMsgNotifications));
