@@ -12,9 +12,9 @@ app all stay in sync.
 - Connect or disconnect, with a live status (green / amber / red) and time connected
 - Choose a location from a searchable list with latency, or Fastest / Random
 - Protocol (WireGuard or OpenVPN) and port
-- Obfuscation, for networks that block VPNs: V2Ray (QUIC or TCP) for
+- (Coming in 1.0.2) Obfuscation, for networks that block VPNs: V2Ray (QUIC or TCP) for
   WireGuard; obfs3, obfs4 (with IAT modes) or V2Ray for OpenVPN
-- A Deskbar item that shows the connection status (right-click it to
+- (Coming in 1.0.2) A Deskbar item that shows the connection status (right-click it to
   connect, disconnect or open the app; **IVPN → Show in Deskbar** turns it
   on or off)
 - Firewall (kill switch), "firewall on connect", AntiTracker and Hardcore mode
@@ -57,8 +57,8 @@ ivpn status
 saved it, run:
 
 ```sh
-sudo apt install ./ivpn-vitruvian_1.0.2_amd64.deb    # Intel/AMD PCs
-sudo apt install ./ivpn-vitruvian_1.0.2_arm64.deb    # ARM64 machines
+sudo apt install ./ivpn-vitruvian_1.0.1_amd64.deb    # Intel/AMD PCs
+sudo apt install ./ivpn-vitruvian_1.0.1_arm64.deb    # ARM64 machines
 ```
 
 **3. Open it** from the Deskbar: **Applications → IVPN**.
