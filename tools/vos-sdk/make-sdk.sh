@@ -7,7 +7,7 @@
 #
 # Runs natively on amd64 or arm64 Debian trixie (VitruvianOS's userland),
 # with these packages installed:
-#   git cmake ninja-build g++ gcc bison flex m4 make pkg-config python3
+#   git cmake ninja-build g++ gcc bison flex libfl-dev m4 make pkg-config python3
 #   libicu-dev libxkbcommon-dev libudev-dev libsystemd-dev libblkid-dev
 #
 # Result in WORK_DIR/sdk: include/vos, lib/{libbe,libroot}.so + vos.pc, env.sh.

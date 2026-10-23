@@ -16,6 +16,7 @@ permissions:
 jobs:
   deb:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - arch: amd64
@@ -29,7 +30,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends ca-certificates git \
-            cmake ninja-build g++ gcc bison flex m4 make pkg-config python3 \
+            cmake ninja-build g++ gcc bison flex libfl-dev m4 make pkg-config python3 \
             libicu-dev libxkbcommon-dev libudev-dev libsystemd-dev libblkid-dev
       - uses: actions/checkout@v4
       - name: Core tests
