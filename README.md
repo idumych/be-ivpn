@@ -46,8 +46,10 @@ Check the service is running:
 ivpn status
 ```
 
-**2. Install this app.** In the folder where you saved the `.deb`, pick the
-one for your machine (`dpkg --print-architecture` tells you which):
+**2. Install this app.** Download the `.deb` for your machine from the
+[latest release](https://github.com/idumych/ivpn-vitruvian/releases/latest)
+(`dpkg --print-architecture` tells you which). Then, in the folder where you
+saved it, run:
 
 ```sh
 sudo apt install ./ivpn-vitruvian_1.0.0_amd64.deb    # Intel/AMD PCs
