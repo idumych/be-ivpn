@@ -6,9 +6,7 @@
 #   sh tools/vos-sdk/make-sdk.sh [WORK_DIR]       (default: ./.vos-sdk)
 #
 # Runs natively on amd64 or arm64 Debian trixie (VitruvianOS's userland),
-# with these packages installed:
-#   git cmake ninja-build g++ gcc bison flex libfl-dev m4 make pkg-config python3
-#   libicu-dev libxkbcommon-dev libudev-dev libsystemd-dev libblkid-dev
+# with the packages listed in .github/workflows/build.yml installed.
 #
 # Result in WORK_DIR/sdk: include/vos, lib/{libbe,libroot}.so + vos.pc, env.sh.
 # The libraries only prove the link; the package uses the ones installed on
