@@ -43,8 +43,8 @@ CMAKE_OPTS="-DVOS_DYNAMIC_LINKER=$LD_SO"
 say "Buildtools"
 mkdir -p "$SRC/vos/buildtools"
 ( cd "$SRC/vos/buildtools"
-  cmake -DBUILDTOOLS_MODE=1 $CMAKE_OPTS .. -GNinja >/dev/null
-  ninja -j"$JOBS" >/dev/null )
+  cmake -DBUILDTOOLS_MODE=1 $CMAKE_OPTS .. -GNinja
+  ninja -j"$JOBS" )
 
 say "libroot, libbe ($ARCH)"
 G=$SRC/vos/generated
@@ -52,7 +52,7 @@ mkdir -p "$G"
 ( cd "$G"
   cmake -DCMAKE_BUILD_TYPE=Release -DBUILDTOOLS_DIR=../buildtools \
 	-DHOST_KERNEL="$(uname -r)" -DKERNEL_RELEASE="$(uname -r)" \
-	-DVITRUVIAN_TARGET_ARCH=$ARCH $CMAKE_OPTS .. -GNinja >/dev/null
+	-DVITRUVIAN_TARGET_ARCH=$ARCH $CMAKE_OPTS .. -GNinja
   ninja -j"$JOBS" root be )
 
 say "SDK in $SDK"
