@@ -7,8 +7,12 @@
 #include <algorithm>
 
 #include <Deskbar.h>
+#include <Directory.h>
+#include <File.h>
+#include <FindDirectory.h>
 #include <MenuItem.h>
 #include <MessageRunner.h>
+#include <Path.h>
 #include <PopUpMenu.h>
 #include <Roster.h>
 #include <Window.h>
@@ -233,8 +237,19 @@ IVPNDeskbarView::MessageReceived(BMessage* message)
 			break;
 
 		case kMsgRemove:
+		{
+			// tell the app not to put the item back at its next launch
+			BPath path;
+			if (find_directory(B_USER_SETTINGS_DIRECTORY, &path) == B_OK
+				&& path.Append(IVPN_DESKBAR_HIDDEN_FILE) == B_OK) {
+				BPath parent;
+				if (path.GetParent(&parent) == B_OK)
+					create_directory(parent.Path(), 0755);
+				BFile(path.Path(), B_WRITE_ONLY | B_CREATE_FILE);
+			}
 			BDeskbar().RemoveItem(IVPN_DESKBAR_ITEM_NAME);
 			break;
+		}
 
 		default:
 			BView::MessageReceived(message);

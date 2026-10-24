@@ -167,7 +167,6 @@ struct Settings {
 	bool			antiTracker = false;
 	bool			antiTrackerHardcore = false;
 	bool			notifications = true;
-	bool			deskbarOffered = false;	// Deskbar item added once
 
 	Port&			PortFor(VpnType t)
 		{ return t == VpnType::WireGuard ? wireguardPort : openvpnPort; }

@@ -19,6 +19,7 @@
 #include <Deskbar.h>
 #include <Directory.h>
 #include <Entry.h>
+#include <File.h>
 #include <FindDirectory.h>
 #include <LayoutBuilder.h>
 #include <MenuBar.h>
@@ -111,6 +112,9 @@ MainWindow::MainWindow()
 	fTickRunner(NULL),
 	fHelloReceived(false),
 	fPingRequested(false),
+	fPingsPending(false),
+	fConnectAfterPings(false),
+	fPingTimeoutRunner(NULL),
 	fWireGuardDisabled(false),
 	fObfsproxyDisabled(false),
 	fV2RayDisabled(false),
@@ -157,13 +161,10 @@ MainWindow::MainWindow()
 	CenterOnScreen();
 	_KeepOnScreen();
 
-	// Put the status item in the Deskbar once; after that it is up to the
-	// user (IVPN > Show in Deskbar).
-	if (!fSettings.deskbarOffered) {
-		fSettings.deskbarOffered = true;
-		_SaveSettings();
+	// Keep the status item in the Deskbar unless the user removed it:
+	// upgrading the package drops it from the Deskbar.
+	if (!_DeskbarItemHidden())
 		_SetDeskbarItem(true, true);
-	}
 
 	PostMessage(kMsgTryConnectDaemon);
 }
@@ -173,6 +174,7 @@ MainWindow::~MainWindow()
 {
 	delete fRetryRunner;
 	delete fTickRunner;
+	delete fPingTimeoutRunner;
 	fDaemon.Disconnect();
 }
 
@@ -433,6 +435,8 @@ MainWindow::MessageReceived(BMessage* message)
 			fDaemon.Disconnect();
 			fHelloReceived = false;
 			fState = kDisconnected;
+			fPingsPending = false;
+			fConnectAfterPings = false;
 			fServiceTitle->SetText("Lost connection to the IVPN service");
 			fServiceDetail->SetText(message->GetString("reason", ""));
 			_ShowCard(kCardService);
@@ -445,10 +449,21 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 
 		case kMsgConnectToggle:
-			if (fState == kDisconnected)
+			if (fConnectAfterPings) {
+				// Cancel while waiting for the latency results
+				fConnectAfterPings = false;
+				_UpdateStatus();
+			} else if (fState == kDisconnected)
 				_Connect();
 			else
 				_Disconnect();
+			break;
+
+		case kMsgPingTimeout:
+			if (fConnectAfterPings) {
+				fConnectAfterPings = false;
+				_Connect(false);
+			}
 			break;
 
 		case kMsgChooseServer:
@@ -489,9 +504,10 @@ MainWindow::MessageReceived(BMessage* message)
 			_UpdateProtocolControls();
 			_UpdateLocationButton();
 			_UpdateServerWindow();
-			fPings.clear();
+			// keep the old results: pings are per host, and WireGuard and
+			// OpenVPN hosts differ, so switching back has them at once
 			if (fHelloReceived)
-				fDaemon.Send(req::PingServers((int)fSettings.vpnType));
+				_RequestPings();
 			_ApplyChangedSettings();
 			break;
 		}
@@ -575,8 +591,12 @@ MainWindow::MessageReceived(BMessage* message)
 			break;
 
 		case kMsgDeskbarToggle:
-			_SetDeskbarItem(!BDeskbar().HasItem(IVPN_DESKBAR_ITEM_NAME), false);
+		{
+			bool show = !BDeskbar().HasItem(IVPN_DESKBAR_ITEM_NAME);
+			_SetDeskbarItemHidden(!show);
+			_SetDeskbarItem(show, false);
 			break;
+		}
 
 		case kMsgConnectWhenReady:
 			fPendingConnect = true;
@@ -608,7 +628,7 @@ MainWindow::MessageReceived(BMessage* message)
 
 		case kMsgPingServers:
 			if (fHelloReceived) {
-				fDaemon.Send(req::PingServers((int)fSettings.vpnType));
+				_RequestPings();
 				_SetHint("Testing server latency" B_UTF8_ELLIPSIS);
 			}
 			break;
@@ -678,7 +698,7 @@ MainWindow::_HandleDaemonLine(const char* line)
 		fServers = ParseServerList(m.value("VpnServers", json::object()));
 		if (!fPingRequested && !fServers.Empty() && !fAccountId.IsEmpty()) {
 			fPingRequested = true;
-			fDaemon.Send(req::PingServers((int)fSettings.vpnType));
+			_RequestPings();
 		}
 		if (fState == kConnected && fConnectedServer.IsEmpty()) {
 			// resolve name for a connection that existed before we started
@@ -693,10 +713,15 @@ MainWindow::_HandleDaemonLine(const char* line)
 		_UpdateStatus();
 		_ConnectIfPending();
 	} else if (command == "PingServersResp") {
+		fPingsPending = false;
 		UpdatePings(fPings, m.value("PingResults", json::array()));
 		_SetHint("");
 		_UpdateLocationButton();
 		_UpdateServerWindow();
+		if (fConnectAfterPings) {
+			fConnectAfterPings = false;
+			_Connect(false);
+		}
 	} else if (command == "VpnStateResp") {
 		fDaemonStateVal = (int)JInt(m, "StateVal");
 		if (fState != kDisconnecting && fDaemonStateVal != kStateConnected
@@ -789,7 +814,7 @@ MainWindow::_HandleHello(const json& m)
 	fDaemon.Send(req::SessionStatus());
 	if (!fServers.Empty() && !fPingRequested) {
 		fPingRequested = true;
-		fDaemon.Send(req::PingServers((int)fSettings.vpnType));
+		_RequestPings();
 	}
 	_ConnectIfPending();
 }
@@ -819,7 +844,7 @@ MainWindow::_HandleLoginResponse(const json& m)
 			fDaemon.Send(req::GetFirewallStatus());
 			if (!fServers.Empty() && !fPingRequested) {
 				fPingRequested = true;
-				fDaemon.Send(req::PingServers((int)fSettings.vpnType));
+				_RequestPings();
 			}
 			_ConnectIfPending();
 			return;
@@ -992,10 +1017,27 @@ MainWindow::_HandleError(const json& m)
 
 
 void
-MainWindow::_Connect()
+MainWindow::_Connect(bool waitForPings)
 {
 	if (!fHelloReceived || fAccountId.IsEmpty())
 		return;
+
+	// "Fastest" without latency results (e.g. right after switching to a
+	// protocol not tested yet) would take the first server in the list:
+	// wait a few seconds for the results instead.
+	if (waitForPings && fSettings.selection == ServerSelection::Fastest
+		&& !fServers.Empty()
+		&& FindFastest(fServers.For(fSettings.vpnType), fPings) == NULL) {
+		if (!fPingsPending)
+			_RequestPings();
+		fConnectAfterPings = true;
+		_UpdateStatus();
+		delete fPingTimeoutRunner;
+		BMessage timeout(kMsgPingTimeout);
+		fPingTimeoutRunner = new BMessageRunner(BMessenger(this), &timeout,
+			6000000, 1);
+		return;
+	}
 
 	std::string error;
 	const Server* chosen = NULL;
@@ -1108,6 +1150,14 @@ MainWindow::_OpenServerWindow()
 
 	if (!fPings.empty() || !fHelloReceived)
 		return;
+	_RequestPings();
+}
+
+
+void
+MainWindow::_RequestPings()
+{
+	fPingsPending = true;
 	fDaemon.Send(req::PingServers((int)fSettings.vpnType));
 }
 
@@ -1181,6 +1231,14 @@ MainWindow::_UpdateStatus()
 			fConnectButton->SetEnabled(false);
 			break;
 		case kDisconnected:
+			if (fConnectAfterPings) {
+				level = StatusView::kWorking;
+				headline = "Connecting" B_UTF8_ELLIPSIS;
+				detail = "Finding the fastest server";
+				fConnectButton->SetLabel("Cancel");
+				fConnectButton->SetEnabled(true);
+				break;
+			}
 			headline = "Not protected";
 			if (!fLastError.IsEmpty())
 				detail = fLastError;
@@ -1365,6 +1423,30 @@ MainWindow::_SetDeskbarItem(bool show, bool quiet)
 		(new BAlert("deskbar", text, "OK", NULL, NULL, B_WIDTH_AS_USUAL,
 			B_STOP_ALERT))->Go(NULL);
 	}
+}
+
+
+bool
+MainWindow::_DeskbarItemHidden() const
+{
+	BPath path;
+	return find_directory(B_USER_SETTINGS_DIRECTORY, &path) == B_OK
+		&& path.Append(IVPN_DESKBAR_HIDDEN_FILE) == B_OK
+		&& BEntry(path.Path()).Exists();
+}
+
+
+void
+MainWindow::_SetDeskbarItemHidden(bool hidden)
+{
+	BPath path;
+	if (find_directory(B_USER_SETTINGS_DIRECTORY, &path) != B_OK
+		|| path.Append(IVPN_DESKBAR_HIDDEN_FILE) != B_OK)
+		return;
+	if (hidden)
+		BFile(path.Path(), B_WRITE_ONLY | B_CREATE_FILE);
+	else
+		BEntry(path.Path()).Remove();
 }
 
 

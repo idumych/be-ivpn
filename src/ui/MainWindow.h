@@ -66,7 +66,8 @@ private:
 	void					_HandleError(const nlohmann::json& m);
 
 	// actions
-	void					_Connect();
+	void					_Connect(bool waitForPings = true);
+	void					_RequestPings();
 	void					_Disconnect();
 	void					_ConnectIfPending();
 	void					_Login();
@@ -86,6 +87,8 @@ private:
 	std::vector<ServerEntry> _ServerEntries() const;
 	void					_Notify(const char* title, const char* content);
 	void					_SaveSettings();
+	bool					_DeskbarItemHidden() const;
+	void					_SetDeskbarItemHidden(bool hidden);
 	BString					_SettingsPath() const;
 
 	DaemonClient			fDaemon;
@@ -97,6 +100,9 @@ private:
 	ivpn::ServerLists		fServers;
 	ivpn::PingMap			fPings;
 	bool					fPingRequested;
+	bool					fPingsPending;		// a PingServers is unanswered
+	bool					fConnectAfterPings;	// "Fastest" waits for them
+	BMessageRunner*			fPingTimeoutRunner;
 	bool					fWireGuardDisabled;
 	bool					fObfsproxyDisabled;
 	bool					fV2RayDisabled;

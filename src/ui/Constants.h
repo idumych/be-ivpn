@@ -14,6 +14,9 @@
 // The Deskbar item: an add-on library Deskbar loads (see src/deskbar)
 #define IVPN_DESKBAR_ITEM_NAME	"IVPN"
 #define IVPN_DESKBAR_ADDON_PATH	"/system/add-ons/ivpn-vitruvian/IVPNDeskbar.so"
+// Present (in B_USER_SETTINGS_DIRECTORY) when the user removed the Deskbar
+// item; otherwise the app puts it back at launch, e.g. after an upgrade.
+#define IVPN_DESKBAR_HIDDEN_FILE	"IVPN/deskbar_hidden"
 
 enum {
 	// DaemonClient -> MainWindow
@@ -23,6 +26,7 @@ enum {
 	// timers
 	kMsgTryConnectDaemon	= 'tCon',
 	kMsgTick				= 'tTck',
+	kMsgPingTimeout			= 'tPng',	// stop waiting to connect
 
 	// main window controls
 	kMsgConnectToggle		= 'mCon',

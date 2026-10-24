@@ -488,7 +488,6 @@ Settings::ToJson() const
 		{"antiTracker", antiTracker},
 		{"antiTrackerHardcore", antiTrackerHardcore},
 		{"notifications", notifications},
-		{"deskbarOffered", deskbarOffered},
 	};
 }
 
@@ -533,7 +532,6 @@ Settings::FromJson(const json& j)
 	s.antiTrackerHardcore = Bool(j, "antiTrackerHardcore",
 		s.antiTrackerHardcore);
 	s.notifications = Bool(j, "notifications", s.notifications);
-	s.deskbarOffered = Bool(j, "deskbarOffered", s.deskbarOffered);
 
 	if (s.selection == ServerSelection::Manual && s.gatewayId.empty())
 		s.selection = ServerSelection::Fastest;
