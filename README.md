@@ -88,8 +88,9 @@ To remove it: `sudo apt remove ivpn-vitruvian`
 The same app also runs on Haiku. IVPN's own service doesn't
 exist for Haiku, so the package brings its own, **ivpnd**: it logs in and
 fetches the server list from IVPN's API, and runs the tunnels with code from
-[Sotoportego](https://github.com/atomozero/Sotoportego) (MIT), a native
-VPN client for Haiku: WireGuard built in (Haiku has no `wg`), and OpenVPN
+[Sotoportego](https://github.com/atomozero/Sotoportego) by
+[atomozero](https://github.com/atomozero) (MIT), a native VPN client for
+Haiku: WireGuard built in (Haiku has no `wg`), and OpenVPN
 through the `openvpn` package. The window starts ivpnd when needed, and
 closing the window still leaves the VPN connected.
 
@@ -181,6 +182,19 @@ tests/      core tests against a fake daemon (any Linux: tests/run_tests.sh)
             types (unknown fields rejected)
 third_party/json.hpp   nlohmann/json 3.11.3 (MIT)
 ```
+
+## Credits
+
+- **[Sotoportego](https://github.com/atomozero/Sotoportego) by
+  [atomozero](https://github.com/atomozero)**: the Haiku service (ivpnd)
+  runs its tunnels with Sotoportego's WireGuard backend, written from
+  scratch for Haiku, and its OpenVPN backend, with its tun, routing and DNS
+  handling. Used under the MIT License (`third_party/sotoportego/LICENSE`);
+  what was changed is listed in `third_party/sotoportego/README.md`.
+- **[IVPN desktop-app](https://github.com/ivpn/desktop-app)** (GPL v3):
+  the protocol, API and OpenVPN settings ivpnd follows, and the OpenVPN CA
+  and TLS key in `resources/openvpn/`.
+- **[nlohmann/json](https://github.com/nlohmann/json)** (MIT).
 
 License: GPL v3, the same as IVPN's desktop-app. IVPN is a trademark of
 Privatus Limited; this is not an official IVPN product.
