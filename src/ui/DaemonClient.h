@@ -21,7 +21,7 @@ public:
 	// Reads port.txt, connects and sends Hello. On failure fills 'error'.
 	bool					Connect(BString& error,
 								const char* clientVersion
-									= IVPN_APP_VERSION ":Vitruvian UI",
+									= IVPN_APP_VERSION ":" IVPN_PLATFORM " UI",
 								int clientType = 0);
 	void					Disconnect();
 	bool					IsConnected() const

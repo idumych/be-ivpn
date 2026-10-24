@@ -1,0 +1,14 @@
+resource app_signature "application/x-vnd.IVPN-Daemon";
+
+// A service: no Deskbar entry, and only one copy at a time.
+resource app_flags B_EXCLUSIVE_LAUNCH | B_BACKGROUND_APP;
+
+resource app_version {
+	major  = 1,
+	middle = 0,
+	minor  = 2,
+	variety = B_APPV_FINAL,
+	internal = 0,
+	short_info = "ivpnd",
+	long_info = "ivpnd - the IVPN service for Haiku"
+};

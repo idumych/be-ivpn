@@ -56,9 +56,15 @@ public:
 	{
 		BAlert* alert = new BAlert("about",
 			IVPN_APP_NAME " " IVPN_APP_VERSION "\n\n"
+#ifdef IVPN_HAIKU
+			"Native IVPN client for Haiku.\n"
+			"Its service, ivpnd, keeps the VPN running; the tunnels use code "
+			"from Sotoportego (MIT).\n\n"
+#else
 			"Native IVPN client for Vitruvian.\n"
 			"Uses the IVPN service (ivpn-service), the same one used by the "
 			"official app and the ivpn command.\n\n"
+#endif
 			"Closing this window does not disconnect the VPN.\n\n"
 			"GNU GPL v3. IVPN is a trademark of Privatus Limited; this app is "
 			"not made by IVPN.",

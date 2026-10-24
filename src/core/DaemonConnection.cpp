@@ -6,6 +6,7 @@
 
 #include <arpa/inet.h>
 #include <cerrno>
+#include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
 #include <fstream>
@@ -37,6 +38,12 @@ DaemonConnection::~DaemonConnection()
 std::vector<std::string>
 DaemonConnection::PortFileCandidates()
 {
+#ifdef IVPN_HAIKU
+	// ivpnd, the app's own service (Haiku's user settings directory)
+	const char* home = getenv("HOME");
+	return {std::string(home != nullptr ? home : "/boot/home")
+		+ "/config/settings/IVPN/daemon/port.txt"};
+#endif
 	// Same lookup order as the official ivpn CLI / UI on Linux.
 	return {
 		"/etc/opt/ivpn/mutable/port.txt",

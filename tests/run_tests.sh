@@ -11,6 +11,12 @@ g++ -std=c++17 -Wall -Wextra -O1 -g -fsanitize=address,undefined -pthread \
 	"$HERE/core_test.cpp" "$HERE/../src/core/DaemonConnection.cpp" \
 	"$HERE/../src/core/Model.cpp" -o "$WORK/core_test"
 
+# ivpnd (the Haiku service): its platform-independent logic
+g++ -std=c++17 -Wall -Wextra -O1 -g -fsanitize=address,undefined \
+	"$HERE/daemon_logic_test.cpp" "$HERE/../src/ivpnd/DaemonLogic.cpp" \
+	"$HERE/../src/core/Model.cpp" -o "$WORK/daemon_logic_test"
+"$WORK/daemon_logic_test"
+
 HELLO_DUMP="$WORK/hello.json" python3 "$HERE/fake_daemon.py" "$WORK/port.txt" &
 DAEMON_PID=$!
 for i in 1 2 3 4 5 6 7 8 9 10; do

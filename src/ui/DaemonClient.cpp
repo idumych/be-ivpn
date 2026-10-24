@@ -5,6 +5,11 @@
 #include "DaemonClient.h"
 
 #include <Message.h>
+#ifdef IVPN_HAIKU
+#include <Entry.h>
+#include <InterfaceDefs.h>
+#include <Roster.h>
+#endif
 
 #include "Constants.h"
 
@@ -30,6 +35,18 @@ DaemonClient::Connect(BString& error, const char* clientVersion,
 
 	ivpn::PortInfo info;
 	std::string err;
+#ifdef IVPN_HAIKU
+	// Our own service; the caller retries in a few seconds.
+	if (!be_roster->IsRunning(IVPND_SIGNATURE)) {
+		if (be_roster->Launch(IVPND_SIGNATURE) != B_OK) {
+			entry_ref ref;
+			if (get_ref_for_path(IVPND_PATH, &ref) == B_OK)
+				be_roster->Launch(&ref);
+		}
+		error = "Starting the IVPN service" B_UTF8_ELLIPSIS;
+		return false;
+	}
+#endif
 	if (!ivpn::DaemonConnection::ReadPortFile(info, err)) {
 		error = err.c_str();
 		return false;

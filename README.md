@@ -83,6 +83,54 @@ sudo apt install ./ivpn-vitruvian_1.0.2_arm64.deb    # ARM64 machines
 
 To remove it: `sudo apt remove ivpn-vitruvian`
 
+## Haiku (R1/beta6 or newer, x86_64)
+
+The same app also runs on Haiku. IVPN's own service doesn't
+exist for Haiku, so the package brings its own, **ivpnd**: it logs in and
+fetches the server list from IVPN's API, and runs the tunnels with code from
+[Sotoportego](https://github.com/atomozero/Sotoportego) (MIT), a native
+VPN client for Haiku: WireGuard built in (Haiku has no `wg`), and OpenVPN
+through the `openvpn` package. The window starts ivpnd when needed, and
+closing the window still leaves the VPN connected.
+
+Download `ivpn_haiku-<version>-1-x86_64.hpkg` from the
+[latest release](https://github.com/idumych/ivpn-vitruvian/releases/latest)
+and, in Terminal, in the folder where you saved it:
+
+```sh
+pkgman install ./ivpn_haiku-*.hpkg
+```
+
+This also installs `openvpn`. Open it from the Deskbar:
+**Applications → IVPN**.
+
+Tested on Haiku R1/beta6 (x86_64, in VirtualBox): logging in, WireGuard
+and OpenVPN connections (IVPN's own check confirms the traffic leaves from an
+IVPN server), AntiTracker, reconnecting when settings change while connected,
+and disconnecting, which puts the routes and DNS back as they were. Built on
+beta6, the package should also install on Renku OS and newer Haiku; that is
+not tested yet.
+
+What's different on Haiku:
+
+- **No firewall (kill switch)**: Haiku has no packet filter, so those
+  options are hidden.
+- **No obfuscation, multi-hop or split tunnel** yet.
+- **IPv4 only**: Haiku's tunnel driver has no IPv6. On a network with IPv6,
+  IPv6 traffic does not go through the VPN.
+- While connected, ivpnd points `/boot/system/settings/network/resolv.conf`
+  at IVPN's DNS (or AntiTracker) and puts the original back when you
+  disconnect.
+- ivpnd keeps its files in `~/config/settings/IVPN/daemon/` (the session is
+  in `account.json`, readable only by you).
+
+To build it on Haiku R1/beta6:
+
+```sh
+pkgman install gcc haiku_devel curl_devel openssl3_devel
+sh packaging/haiku/build-hpkg.sh
+```
+
 ## If something goes wrong
 
 - **"The IVPN service is not reachable":** start it with
@@ -123,6 +171,11 @@ src/core/   protocol + data model, plain C++17, no Haiku API
             Model             server list, pings, settings, Connect params
             Requests.h        every request the app sends
 src/ui/     Haiku API window, location picker, status header
+src/ivpnd/  ivpnd, the IVPN service for Haiku (same JSON protocol)
+            DaemonLogic       API answers -> responses, tunnel configs
+                              (no Haiku API; tests/daemon_logic_test.cpp)
+            Daemon            the background app: clients, workers, tunnels
+third_party/sotoportego/      WireGuard + OpenVPN backends (MIT), see its README
 tests/      core tests against a fake daemon (any Linux: tests/run_tests.sh)
             gocheck/: decodes every request with the real daemon's Go
             types (unknown fields rejected)

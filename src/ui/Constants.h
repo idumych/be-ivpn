@@ -13,7 +13,17 @@
 
 // The Deskbar item: an add-on library Deskbar loads (see src/deskbar)
 #define IVPN_DESKBAR_ITEM_NAME	"IVPN"
+#ifdef IVPN_HAIKU
+// Haiku has no ivpn-service: the app ships its own, ivpnd (src/ivpnd),
+// and starts it when it isn't running.
+#define IVPN_PLATFORM			"Haiku"
+#define IVPN_DESKBAR_ADDON_PATH	"/boot/system/add-ons/IVPN/IVPNDeskbar.so"
+#define IVPND_SIGNATURE			"application/x-vnd.IVPN-Daemon"
+#define IVPND_PATH				"/boot/system/apps/IVPN/ivpnd"
+#else
+#define IVPN_PLATFORM			"Vitruvian"
 #define IVPN_DESKBAR_ADDON_PATH	"/system/add-ons/ivpn-vitruvian/IVPNDeskbar.so"
+#endif
 // Present (in B_USER_SETTINGS_DIRECTORY) when the user removed the Deskbar
 // item; otherwise the app puts it back at launch, e.g. after an upgrade.
 #define IVPN_DESKBAR_HIDDEN_FILE	"IVPN/deskbar_hidden"

@@ -2,7 +2,7 @@ name: build
 
 # Builds the amd64 and arm64 .deb packages natively in Debian trixie
 # (VitruvianOS's userland), linking against libbe/libroot built from the
-# VitruvianOS 0.6.2 source. Run by hand, or on a v* tag push, which also
+# VitruvianOS 0.6.2 source, and the Haiku .hpkg on Haiku R1/beta6. Run by hand, or on a v* tag push, which also
 # attaches the packages and SHA256SUMS to that tag's release (created as a
 # prerelease if it doesn't exist yet).
 on:
@@ -59,8 +59,31 @@ jobs:
           name: deb-${{ matrix.arch }}
           path: ivpn-vitruvian_*_${{ matrix.arch }}.deb
 
+  hpkg:
+    # Haiku R1/beta6 x86_64 in a VM on the runner. Haiku has no arm64
+    # release or package repository yet, so there is no arm64 .hpkg.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cross-platform-actions/action@v1.6.0
+        with:
+          operating_system: haiku
+          version: r1beta6
+          architecture: x86-64
+          memory: 4G
+          cpu_count: 4
+          shell: bash
+          run: |
+            pkgman install -y gcc haiku_devel curl_devel openssl3_devel
+            sh packaging/haiku/build-hpkg.sh
+            package list -i ivpn_haiku-*.hpkg
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hpkg-x86_64
+          path: ivpn_haiku-*.hpkg
+
   release:
-    needs: deb
+    needs: [deb, hpkg]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-24.04
     steps:
@@ -71,12 +94,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          sha256sum ivpn-vitruvian_*.deb > SHA256SUMS
+          sha256sum ivpn-vitruvian_*.deb ivpn_haiku-*.hpkg > SHA256SUMS
           cat SHA256SUMS
           # New releases start as prereleases; mark them final after testing.
           gh release view "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
             || gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" \
               --verify-tag --prerelease --title "$GITHUB_REF_NAME" \
               --notes "See the README for install steps."
-          gh release upload "$GITHUB_REF_NAME" ivpn-vitruvian_*.deb SHA256SUMS \
+          gh release upload "$GITHUB_REF_NAME" ivpn-vitruvian_*.deb \
+            ivpn_haiku-*.hpkg SHA256SUMS \
             --clobber -R "$GITHUB_REPOSITORY"

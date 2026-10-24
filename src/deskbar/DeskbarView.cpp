@@ -268,7 +268,7 @@ IVPNDeskbarView::_TryConnect()
 
 	BString error;
 	// ClientType 3 ("other"): the daemon treats only the window as its UI
-	if (!fDaemon->Connect(error, IVPN_APP_VERSION ":Vitruvian Deskbar", 3)) {
+	if (!fDaemon->Connect(error, IVPN_APP_VERSION ":" IVPN_PLATFORM " Deskbar", 3)) {
 		_SetState(kNoService);
 		_ScheduleRetry();
 	}
