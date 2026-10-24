@@ -16,7 +16,7 @@
 #   STRIP=llvm-strip   (optional)
 set -e
 
-APP_VERSION="1.0.2"
+APP_VERSION="1.1.0"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 OUT="$HERE/build"
 mkdir -p "$OUT"

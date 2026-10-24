@@ -4,10 +4,10 @@ resource app_flags B_SINGLE_LAUNCH;
 
 resource app_version {
 	major  = 1,
-	middle = 0,
-	minor  = 2,
+	middle = 1,
+	minor  = 0,
 	variety = B_APPV_FINAL,
 	internal = 0,
 	short_info = "IVPN",
-	long_info = "IVPN 1.0.2 - native IVPN client for Vitruvian"
+	long_info = "IVPN 1.1.0 - native IVPN client for Vitruvian and Haiku"
 };
