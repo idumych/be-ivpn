@@ -28,6 +28,20 @@ Not included yet: multi-hop, split tunnel, custom DNS, captcha logins (log
 in once with `ivpn login` if IVPN asks for one), and Enhanced App
 Authentication.
 
+## Screenshots
+
+![The IVPN window, connected to Seattle over WireGuard](docs/screenshots/vitruvianos-connected.png)
+
+Connected to the fastest server over WireGuard, on VitruvianOS at 800×600.
+
+![The Choose location window, with latencies](docs/screenshots/vitruvianos-locations.png)
+
+Choosing a location: search, Fastest or Random, and each server's latency.
+
+![The Deskbar item's menu](docs/screenshots/vitruvianos-deskbar.png)
+
+The Deskbar item's right-click menu, with the green "protected" lamp behind it.
+
 ## Install (Vitruvian 0.6.2 or newer, x86_64 or ARM64)
 
 Open **Terminal** and run these one block at a time.
