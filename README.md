@@ -38,9 +38,13 @@ Connected to the fastest server over WireGuard, on VitruvianOS at 800×600.
 
 Choosing a location: search, Fastest or Random, and each server's latency.
 
+![The Deskbar lamp with its tooltip](docs/screenshots/vitruvianos-deskbar-tooltip.png)
+
+The Deskbar lamp is green while protected; hover over it for the status.
+
 ![The Deskbar item's menu](docs/screenshots/vitruvianos-deskbar.png)
 
-The Deskbar item's right-click menu, with the green "protected" lamp behind it.
+Right-click the lamp to connect, disconnect or open the app.
 
 ## Install (Vitruvian 0.6.2 or newer, x86_64 or ARM64)
 
