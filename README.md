@@ -1,7 +1,7 @@
 # IVPN for Vitruvian
 
-A native Vitruvian (Haiku API) window for IVPN. It replaces the Electron
-`ivpn-ui`, which cannot run on Vitruvian. The VPN work is still done by the
+A native window for IVPN on Vitruvian (VitruvianOS), a BeOS-like OS based on
+Linux, written against its Haiku API. It replaces the Electron `ivpn-ui`, which cannot run on Vitruvian. The VPN work is still done by the
 official IVPN background service (`ivpn-service`, from the `ivpn` package),
 the same one the `ivpn` command uses. So the app, the command and the official
 app all stay in sync.
