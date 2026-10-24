@@ -28,6 +28,7 @@ public:
 
 private:
 	float					_LampSize() const;
+	int32					_WrapDetail(float width, BString lines[2]) const;
 
 	Level					fLevel;
 	BString					fHeadline;

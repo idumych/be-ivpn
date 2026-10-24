@@ -98,10 +98,12 @@ std::vector<Obfuscation>	ObfuscationChoices(VpnType type);
 // WireGuard is UDP only. Never empty.
 std::vector<Port>	AllowedPorts(const std::vector<Port>& ports, VpnType type,
 						const Obfuscation& obfs);
-// 'current' when it is allowed, otherwise the recommended port for 'obfs'
-// (UDP 443 for V2Ray QUIC, TCP 80 for V2Ray TCP) or the first allowed one.
+// 'chosen' (the port the user picked) when it is allowed, then 'current',
+// otherwise the recommended port for 'obfs' (UDP 443 for V2Ray QUIC,
+// TCP 80 for V2Ray TCP) or the first allowed one.
 Port				PickPort(const std::vector<Port>& allowed,
-						const Port& current, const Obfuscation& obfs);
+						const Port& current, const Obfuscation& obfs,
+						const Port* chosen = nullptr);
 
 struct Server {
 	std::string		gateway;		// e.g. "nl.wg.ivpn.net"
@@ -155,6 +157,10 @@ struct Settings {
 	std::string		gatewayId;			// used when selection == Manual
 	Port			wireguardPort;		// UDP 2049
 	Port			openvpnPort;		// UDP 2049
+	// The ports the user picked; obfuscation may force another one for a
+	// while, and these come back once it allows them again.
+	Port			wireguardChosenPort;
+	Port			openvpnChosenPort;
 	Obfuscation		wireguardObfs;
 	Obfuscation		openvpnObfs;
 	bool			firewallOnConnect = false;
@@ -167,6 +173,9 @@ struct Settings {
 		{ return t == VpnType::WireGuard ? wireguardPort : openvpnPort; }
 	const Port&		PortFor(VpnType t) const
 		{ return t == VpnType::WireGuard ? wireguardPort : openvpnPort; }
+	Port&			ChosenPortFor(VpnType t)
+		{ return t == VpnType::WireGuard
+			? wireguardChosenPort : openvpnChosenPort; }
 	Obfuscation&	ObfsFor(VpnType t)
 		{ return t == VpnType::WireGuard ? wireguardObfs : openvpnObfs; }
 	const Obfuscation& ObfsFor(VpnType t) const

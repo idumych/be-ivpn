@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 #include <ControlLook.h>
 #include <Font.h>
@@ -120,21 +121,55 @@ StatusView::Draw(BRect /*updateRect*/)
 	headline.GetHeight(&hfh);
 	be_plain_font->GetHeight(&pfh);
 
+	float width = bounds.right - x - spacing;
+	BString lines[2];
+	int32 lineCount = _WrapDetail(width, lines);
+
 	float textBlock = hfh.ascent + hfh.descent + spacing / 2
-		+ pfh.ascent + pfh.descent;
+		+ (pfh.ascent + pfh.descent + pfh.leading) * lineCount;
 	float y = (bounds.Height() - textBlock) / 2 + hfh.ascent;
 
 	SetHighUIColor(B_PANEL_TEXT_COLOR);
 	SetFont(&headline);
 	BString text = fHeadline;
-	headline.TruncateString(&text, B_TRUNCATE_END, bounds.right - x - spacing);
+	headline.TruncateString(&text, B_TRUNCATE_END, width);
 	DrawString(text.String(), BPoint(x, y));
 
 	y += hfh.descent + spacing / 2 + pfh.ascent;
 	SetFont(be_plain_font);
 	SetHighUIColor(B_PANEL_TEXT_COLOR, B_LIGHTEN_1_TINT);
-	text = fDetail;
-	be_plain_font->TruncateString(&text, B_TRUNCATE_END,
-		bounds.right - x - spacing);
-	DrawString(text.String(), BPoint(x, y));
+	for (int32 i = 0; i < lineCount; i++) {
+		be_plain_font->TruncateString(&lines[i], B_TRUNCATE_END, width);
+		DrawString(lines[i].String(), BPoint(x, y));
+		y += pfh.ascent + pfh.descent + pfh.leading;
+	}
+}
+
+
+// Splits the detail line at its " · " separators onto a second line when
+// it is too wide, so the last part (the connection timer) stays visible.
+int32
+StatusView::_WrapDetail(float width, BString lines[2]) const
+{
+	static const char* kSeparator = " \xC2\xB7 ";
+	lines[0] = fDetail;
+	if (be_plain_font->StringWidth(fDetail.String()) <= width)
+		return 1;
+
+	// break at the last separator that leaves a first line that fits
+	int32 offset = fDetail.FindLast(kSeparator);
+	while (offset > 0) {
+		BString first;
+		fDetail.CopyInto(first, 0, offset);
+		if (be_plain_font->StringWidth(first.String()) <= width)
+			break;
+		offset = fDetail.FindLast(kSeparator, offset - 1);
+	}
+	if (offset <= 0)
+		return 1;
+
+	fDetail.CopyInto(lines[0], 0, offset);
+	int32 rest = offset + strlen(kSeparator);
+	fDetail.CopyInto(lines[1], rest, fDetail.Length() - rest);
+	return 2;
 }

@@ -484,7 +484,8 @@ MainWindow::MessageReceived(BMessage* message)
 				AllowedPorts(fServers.PortsFor(fSettings.vpnType),
 					fSettings.vpnType, fSettings.ObfsFor(fSettings.vpnType)),
 				fSettings.PortFor(fSettings.vpnType),
-				fSettings.ObfsFor(fSettings.vpnType));
+				fSettings.ObfsFor(fSettings.vpnType),
+				&fSettings.ChosenPortFor(fSettings.vpnType));
 			_UpdateProtocolControls();
 			_UpdateLocationButton();
 			_UpdateServerWindow();
@@ -506,11 +507,13 @@ MainWindow::MessageReceived(BMessage* message)
 				break;
 			const Obfuscation& obfs = choices[index];
 			fSettings.ObfsFor(fSettings.vpnType) = obfs;
-			// obfs4 needs TCP, V2Ray QUIC needs UDP, ...
+			// obfs4 needs TCP, V2Ray QUIC needs UDP, ...; going back to a
+			// mode that allows the user's own port restores it
 			fSettings.PortFor(fSettings.vpnType) = PickPort(
 				AllowedPorts(fServers.PortsFor(fSettings.vpnType),
 					fSettings.vpnType, obfs),
-				fSettings.PortFor(fSettings.vpnType), obfs);
+				fSettings.PortFor(fSettings.vpnType), obfs,
+				&fSettings.ChosenPortFor(fSettings.vpnType));
 			_UpdateProtocolControls();
 			_ApplyChangedSettings();
 			break;
@@ -526,8 +529,12 @@ MainWindow::MessageReceived(BMessage* message)
 			Port newPort;
 			newPort.port = port;
 			newPort.tcp = tcp;
-			if (newPort == fSettings.PortFor(fSettings.vpnType))
+			// picking the port already in use still makes it the user's own
+			fSettings.ChosenPortFor(fSettings.vpnType) = newPort;
+			if (newPort == fSettings.PortFor(fSettings.vpnType)) {
+				_SaveSettings();
 				break;
+			}
 			fSettings.PortFor(fSettings.vpnType) = newPort;
 			_ApplyChangedSettings();
 			break;
@@ -1267,7 +1274,8 @@ MainWindow::_UpdateProtocolControls()
 	Port& current = fSettings.PortFor(fSettings.vpnType);
 	if (!fServers.Empty()) {
 		// the list is known: a port that doesn't fit the obfuscation goes
-		Port picked = PickPort(ports, current, obfs);
+		Port picked = PickPort(ports, current, obfs,
+			&fSettings.ChosenPortFor(fSettings.vpnType));
 		if (!(picked == current)) {
 			current = picked;
 			_SaveSettings();

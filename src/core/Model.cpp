@@ -228,8 +228,11 @@ AllowedPorts(const std::vector<Port>& ports, VpnType type,
 
 Port
 PickPort(const std::vector<Port>& allowed, const Port& current,
-	const Obfuscation& obfs)
+	const Obfuscation& obfs, const Port* chosen)
 {
+	if (chosen != nullptr
+		&& std::find(allowed.begin(), allowed.end(), *chosen) != allowed.end())
+		return *chosen;
 	if (std::find(allowed.begin(), allowed.end(), current) != allowed.end())
 		return current;
 
@@ -477,6 +480,8 @@ Settings::ToJson() const
 		{"gatewayId", gatewayId},
 		{"wireguardPort", PortToJson(wireguardPort)},
 		{"openvpnPort", PortToJson(openvpnPort)},
+		{"wireguardChosenPort", PortToJson(wireguardChosenPort)},
+		{"openvpnChosenPort", PortToJson(openvpnChosenPort)},
 		{"wireguardObfuscation", ObfsToJson(wireguardObfs)},
 		{"openvpnObfuscation", ObfsToJson(openvpnObfs)},
 		{"firewallOnConnect", firewallOnConnect},
@@ -508,6 +513,13 @@ Settings::FromJson(const json& j)
 		s.wireguardPort = PortFromJson(j["wireguardPort"], s.wireguardPort);
 	if (j.contains("openvpnPort"))
 		s.openvpnPort = PortFromJson(j["openvpnPort"], s.openvpnPort);
+	// settings from 1.0.1 and earlier: the saved port is the best guess
+	s.wireguardChosenPort = j.contains("wireguardChosenPort")
+		? PortFromJson(j["wireguardChosenPort"], s.wireguardPort)
+		: s.wireguardPort;
+	s.openvpnChosenPort = j.contains("openvpnChosenPort")
+		? PortFromJson(j["openvpnChosenPort"], s.openvpnPort)
+		: s.openvpnPort;
 	if (j.contains("wireguardObfuscation"))
 		s.wireguardObfs = ObfsFromJson(j["wireguardObfuscation"],
 			VpnType::WireGuard);

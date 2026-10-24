@@ -184,6 +184,17 @@ TestObfuscation()
 	CHECK(PickPort(AllowedPorts(ovpn, VpnType::OpenVPN, obfs4),
 		Port{2049, false}, obfs4).tcp);
 
+	// the user's own port wins whenever it is allowed: turning obfs4 off
+	// again brings back UDP 2049 instead of keeping the forced TCP port
+	Port chosen{2049, false};
+	Port forced = PickPort(AllowedPorts(ovpn, VpnType::OpenVPN, obfs4),
+		chosen, obfs4, &chosen);
+	CHECK(forced.tcp);
+	CHECK(PickPort(AllowedPorts(ovpn, VpnType::OpenVPN, off), forced, off,
+		&chosen) == chosen);
+	CHECK(PickPort(AllowedPorts(wg, VpnType::WireGuard, off), Port{80, true},
+		off, &chosen) == chosen);
+
 	Obfuscation fromResp = ConnectedObfuscation(json::parse(
 		R"({"V2RayProxy":0,"Obfsproxy":{"Version":4,"Obfs4Iat":2}})"));
 	CHECK(fromResp.obfsVersion == 4 && fromResp.obfsIat == 2);
@@ -223,6 +234,16 @@ TestSettings()
 	CHECK(loaded.wireguardObfs.v2ray == V2Ray::TCP);
 	CHECK(loaded.wireguardPort == (Port{443, true}));	// TCP kept for V2Ray
 	CHECK(loaded.firewallOnConnect && loaded.antiTracker);
+
+	// the chosen ports round-trip; older settings use the saved port
+	s.openvpnChosenPort = Port{2049, false};
+	CHECK(s.Save(path));
+	CHECK(loaded.Load(path));
+	CHECK(loaded.openvpnChosenPort == (Port{2049, false}));
+	Settings old = Settings::FromJson(json::parse(
+		R"({"openvpnPort":{"port":1194,"tcp":false}})"));
+	CHECK(old.openvpnChosenPort == (Port{1194, false}));
+	CHECK(old.wireguardChosenPort == old.wireguardPort);
 
 	// garbage / bad values fall back to defaults
 	Settings bad = Settings::FromJson(json::parse(
