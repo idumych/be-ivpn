@@ -124,7 +124,8 @@ std::string		OpenVpnConf(const ConnectPlan& plan, const std::string& ca,
 
 // V2Ray client configuration (as ivpn-service writes it): a local
 // dokodemo-door on 127.0.0.1:'localPort' (UDP) forwarded over VMess.
-nlohmann::json	V2RayConfig(const ConnectPlan& plan, int localPort);
+nlohmann::json	V2RayConfig(const ConnectPlan& plan, int localPort,
+					const std::string& logLevel = "warning");
 
 // obfs4proxy's SOCKS credentials for obfs4 ("cert=...;\niat-mode=N"); empty
 // for obfs3.

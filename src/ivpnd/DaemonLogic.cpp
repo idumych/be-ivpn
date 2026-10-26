@@ -497,7 +497,8 @@ ConnectedResp(const ConnectPlan& plan, const std::string& clientIp,
 
 
 json
-V2RayConfig(const ConnectPlan& plan, int localPort)
+V2RayConfig(const ConnectPlan& plan, int localPort,
+	const std::string& logLevel)
 {
 	json stream;
 	if (plan.v2ray == 1) {
@@ -535,7 +536,7 @@ V2RayConfig(const ConnectPlan& plan, int localPort)
 		};
 	}
 	return {
-		{"log", {{"loglevel", "warning"}}},
+		{"log", {{"loglevel", logLevel}}},
 		{"inbounds", {{
 			{"port", std::to_string(localPort)},
 			{"listen", "127.0.0.1"},

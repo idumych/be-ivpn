@@ -55,9 +55,10 @@ package installs on Renku OS, but it is not tested there yet.
 
 Good to know:
 
-- **IPv4 only**: Haiku's tunnel driver has no IPv6. On a network with IPv6,
-  IPv6 traffic does not go through the VPN, unless the firewall is on: it
-  blocks IPv6 too.
+- **IPv4 only**: Haiku's tunnel driver has no IPv6, so while connected (and
+  while the firewall is on) ivpnd takes out the IPv6 default route: IPv6
+  traffic is blocked rather than sent around the VPN. The same goes for a
+  second network connection (say Ethernet and Wi-Fi at once).
 - **How the firewall works:** Haiku has no packet filter, so it works on
   routes. While it is on, your network's default route stays out of the
   routing table (ivpnd takes it out again when DHCP puts it back), so
@@ -77,6 +78,9 @@ Good to know:
 - **"The IVPN service is not reachable":** ivpnd normally starts by itself.
   If it doesn't, run `/boot/system/apps/BeIVPN/ivpnd` in Terminal to see
   why. The app retries every few seconds.
+- **Obfuscation (V2Ray, obfs4) never connects:** check the system clock.
+  Both reject a client whose clock is off (V2Ray by more than about two
+  minutes), and the server just doesn't answer.
 - **Settings** are saved in `~/config/settings/IVPN/settings.json`. Delete
   that file to reset them.
 

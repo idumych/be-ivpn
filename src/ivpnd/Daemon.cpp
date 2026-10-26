@@ -678,7 +678,7 @@ Daemon::_SetKillSwitch(bool enabled)
 	if (enabled)
 		fKillSwitch.Enable();
 	else
-		fKillSwitch.Disable(fPhase == kTunnel);
+		fKillSwitch.Disable();
 	_UpdateApiHosts();
 	_Broadcast(_KillSwitchResp());
 }
@@ -1036,8 +1036,11 @@ Daemon::_PrepareTunnel()
 	if (fPlan.UsesV2Ray()) {
 		int localPort = FreeUdpPort();
 		std::string config = _DataPath("v2ray.json");
+		// IVPND_V2RAY_LOG=debug shows V2Ray's connections in the log
+		const char* level = getenv("IVPND_V2RAY_LOG");
 		if (localPort <= 0 || !WritePrivateFile(config,
-				V2RayConfig(fPlan, localPort).dump(1, '\t'))) {
+				V2RayConfig(fPlan, localPort, level != NULL ? level
+					: "warning").dump(1, '\t'))) {
 			_TunnelDown(true, "Could not prepare V2Ray.");
 			return;
 		}
@@ -1185,6 +1188,8 @@ Daemon::_BackendState(BMessage* message)
 				fConnected = true;
 				fConnectedSince = time(NULL);
 				dns::Apply(fPlan.dns);
+				// a second network or IPv6 would bypass the tunnel
+				fKillSwitch.SetTunnelUp(true);
 				delete fDnsCheck;
 				BMessage check(kMsgDnsCheck);
 				fDnsCheck = new BMessageRunner(BMessenger(this), &check,
@@ -1241,12 +1246,14 @@ Daemon::_TunnelDown(bool failure, const std::string& reason)
 		UnpinFromCarrier(pin.first, pin.second);
 	fConnPins.clear();
 
+	// The backend has put its carrier default back (or the kill switch
+	// holds it); the other defaults come back too unless the kill switch
+	// is on, which also pins the API again now that the gateway is known.
+	fKillSwitch.SetTunnelUp(false);
 	if (fUserStop && fPending.is_null() && fFirewallByConnect) {
 		fFirewallByConnect = false;
 		_SetKillSwitch(false);
 	}
-	// The carrier's gateway is known again: pin the API
-	fKillSwitch.Check();
 
 	if (!fPending.is_null()) {
 		json params = fPending;

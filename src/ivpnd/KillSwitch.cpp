@@ -93,7 +93,8 @@ UnpinFromCarrier(const std::string& ip, const std::string& via)
 KillSwitch::KillSwitch(const std::string& statePath)
 	:
 	fStatePath(statePath),
-	fEnabled(false)
+	fEnabled(false),
+	fTunnelUp(false)
 {
 }
 
@@ -105,15 +106,8 @@ KillSwitch::Load()
 	std::stringstream ss;
 	ss << in.rdbuf();
 	json state = json::parse(ss.str(), nullptr, false);
-	if (!state.is_object() || !state.value("enabled", false))
+	if (!state.is_object())
 		return;
-
-	// After a restart with the kill switch on, the carrier default is no
-	// longer in the table: the saved gateway is the only record of it.
-	std::string gateway = state.value("gateway", "");
-	std::string iface = state.value("iface", "");
-	if (!gateway.empty() && !iface.empty())
-		TunDevice::SetHeldGateway(gateway.c_str(), iface.c_str());
 	if (state.contains("held") && state["held"].is_array()) {
 		for (const json& r : state["held"]) {
 			DefaultRoute route;
@@ -124,6 +118,19 @@ KillSwitch::Load()
 				fHeld.push_back(route);
 		}
 	}
+
+	if (!state.value("enabled", false)) {
+		// A previous run died with a tunnel up: put back what it held
+		_RestoreHeld();
+		_Save();
+		return;
+	}
+	// After a restart with the kill switch on, the carrier default is no
+	// longer in the table: the saved gateway is the only record of it.
+	std::string gateway = state.value("gateway", "");
+	std::string iface = state.value("iface", "");
+	if (!gateway.empty() && !iface.empty())
+		TunDevice::SetHeldGateway(gateway.c_str(), iface.c_str());
 	Enable();
 }
 
@@ -136,13 +143,14 @@ KillSwitch::Enable()
 	fEnabled = true;
 	TunDevice::SetDefaultRouteHeld(true);
 	_RemoveCarrierDefaults();
-	_PinAll();
+	if (!fTunnelUp)
+		_PinAll();
 	_Save();
 }
 
 
 void
-KillSwitch::Disable(bool tunnelUp)
+KillSwitch::Disable()
 {
 	if (!fEnabled)
 		return;
@@ -154,20 +162,38 @@ KillSwitch::Disable(bool tunnelUp)
 	bool known = TunDevice::HeldGateway(gateway, iface);
 	TunDevice::SetDefaultRouteHeld(false);
 	TunDevice::SetHeldGateway("", "");
-	std::vector<DefaultRoute> present = ParseDefaultRoutes(RouteTable());
-	for (const DefaultRoute& r : fHeld) {
-		// With the tunnel up, its backend puts its carrier default back
-		// when it goes down
-		if (tunnelUp && known && !r.v6 && r.gateway == gateway.String()
-			&& r.iface == iface.String())
-			continue;
-		bool there = false;
-		for (const DefaultRoute& p : present)
-			there = there || p == r;
-		if (!there)
-			Route("add", r);
+	// With a tunnel up the defaults stay out until it goes down (and its
+	// backend puts its own carrier default back then)
+	if (!fTunnelUp) {
+		if (known) {
+			// the default a tunnel left with the kill switch
+			DefaultRoute r;
+			r.gateway = gateway.String();
+			r.iface = iface.String();
+			bool listed = false;
+			for (const DefaultRoute& h : fHeld)
+				listed = listed || h == r;
+			if (!listed)
+				fHeld.push_back(r);
+		}
+		_RestoreHeld();
 	}
-	fHeld.clear();
+	_Save();
+}
+
+
+void
+KillSwitch::SetTunnelUp(bool up)
+{
+	fTunnelUp = up;
+	if (up) {
+		// The API goes through the tunnel like everything else
+		_UnpinAll();
+		_RemoveCarrierDefaults();
+	} else if (!fEnabled)
+		_RestoreHeld();
+	else
+		_PinAll();
 	_Save();
 }
 
@@ -179,7 +205,7 @@ KillSwitch::SetApiHosts(const std::vector<std::string>& ips)
 		return;
 	_UnpinAll();
 	fApiHosts = ips;
-	if (fEnabled)
+	if (fEnabled && !fTunnelUp)
 		_PinAll();
 }
 
@@ -187,10 +213,11 @@ KillSwitch::SetApiHosts(const std::vector<std::string>& ips)
 void
 KillSwitch::Check()
 {
-	if (!fEnabled)
+	if (!fEnabled && !fTunnelUp)
 		return;
 	_RemoveCarrierDefaults();
-	_PinAll();
+	if (fEnabled && !fTunnelUp)
+		_PinAll();
 }
 
 
@@ -205,7 +232,7 @@ KillSwitch::_RemoveCarrierDefaults()
 			known = known || h == r;
 		if (!known)
 			fHeld.push_back(r);
-		if (!r.v6) {
+		if (!r.v6 && fEnabled) {
 			// The first carrier is the one tunnels and API pins use; a new
 			// network (or DHCP) can bring a new gateway, and the pins must
 			// follow it.
@@ -223,11 +250,27 @@ KillSwitch::_RemoveCarrierDefaults()
 				TunDevice::SetHeldGateway(r.gateway.c_str(), r.iface.c_str());
 			}
 		}
-		printf("ivpnd: kill switch takes out the default route via %s %s\n",
-			r.iface.c_str(), r.gateway.c_str());
+		printf("ivpnd: %s takes out the default route via %s %s\n",
+			fEnabled ? "kill switch" : "tunnel", r.iface.c_str(),
+			r.gateway.c_str());
 		Route("delete", r);
 		_Save();
 	}
+}
+
+
+void
+KillSwitch::_RestoreHeld()
+{
+	std::vector<DefaultRoute> present = ParseDefaultRoutes(RouteTable());
+	for (const DefaultRoute& r : fHeld) {
+		bool there = false;
+		for (const DefaultRoute& p : present)
+			there = there || p == r;
+		if (!there)
+			Route("add", r);
+	}
+	fHeld.clear();
 }
 
 

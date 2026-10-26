@@ -4,14 +4,19 @@
  * Haiku has no packet filter, so this works on routes instead: while it is
  * on, the carrier's default routes (IPv4 and IPv6) stay out of the routing
  * table. Traffic can then only leave through the tunnel's own default route,
- * or to hosts pinned to the carrier: IVPN's API (so logging in and updating
- * the server list still work) and, pinned by the daemon while it connects,
- * the VPN or proxy server. The local network keeps working through its
+ * or to hosts pinned to the carrier: IVPN's API while there is no tunnel
+ * (so logging in and connecting still work) and, pinned by the daemon while
+ * it connects, the VPN or proxy server. The local network keeps working through its
  * on-link route.
  *
  * A DHCP renewal puts the default route back, so Check() runs every few
  * seconds and takes it out again. The state is saved, so ivpnd keeps it
  * after a restart (until the user turns it off).
+ *
+ * While a tunnel is up the same holding applies even with the kill switch
+ * off: the backend replaces one carrier default, but a second network
+ * (Ethernet and Wi-Fi) or an IPv6 default would still carry traffic around
+ * the tunnel. Those come back when the tunnel goes down.
  *
  * Distributed under the terms of the GNU GPL v3.
  */
@@ -35,9 +40,11 @@ public:
 
 			bool		IsEnabled() const { return fEnabled; }
 			void		Enable();
-			// 'tunnelUp': the tunnel's default route is in place; the
-			// carrier's comes back when the tunnel goes down.
-			void		Disable(bool tunnelUp);
+			void		Disable();
+
+			// A tunnel came up (its default route is in place) or went
+			// down (its backend has put its carrier default back).
+			void		SetTunnelUp(bool up);
 
 			// IVPN's API servers, reachable while it is on.
 			void		SetApiHosts(const std::vector<std::string>& ips);
@@ -53,9 +60,11 @@ private:
 			void		_PinAll();
 			void		_UnpinAll();
 			void		_RemoveCarrierDefaults();
+			void		_RestoreHeld();
 
 			std::string	fStatePath;
 			bool		fEnabled;
+			bool		fTunnelUp;
 			std::vector<std::string> fApiHosts;
 			// API host -> the "iface gateway" it is pinned through
 			std::map<std::string, std::string> fPinned;
