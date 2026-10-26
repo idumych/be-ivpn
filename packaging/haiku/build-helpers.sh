@@ -25,6 +25,9 @@ command -v git >/dev/null 2>&1 || die "git not found (pkgman install git)"
 WORK="$(mktemp -d)"
 trap 'chmod -R u+w "$WORK" 2>/dev/null; rm -rf "$WORK"' EXIT
 export GOPATH="$WORK/gopath" GOCACHE="$WORK/gocache" CGO_ENABLED=0
+# Fewer compilers at once: V2Ray is large, and Go's compiler on Haiku dies
+# when memory runs short (seen in a 4 GB CI VM)
+export GOFLAGS="-p=2"
 
 # Adds "haiku" next to "linux" in the //go:build lines of the given files
 add_haiku_tag() {
