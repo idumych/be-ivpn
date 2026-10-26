@@ -94,14 +94,15 @@ sh tests/run_haiku_tests.sh "$OBJ"
 say "Packaging"
 PKG="$OBJ/hpkg"
 DOC="$PKG/documentation/packages/be_ivpn"
-mkdir -p "$PKG/apps/BeIVPN/helpers" "$PKG/add-ons/BeIVPN" "$PKG/data/ivpn" \
-	"$PKG/data/deskbar/menu/Applications" "$DOC"
+mkdir -p "$PKG/apps/BeIVPN/helpers" "$PKG/add-ons/BeIVPN" "$PKG/bin" \
+	"$PKG/data/ivpn" "$PKG/data/deskbar/menu/Applications" "$DOC"
 cp "$OBJ/BeIVPN" "$OBJ/ivpnd" "$PKG/apps/BeIVPN/"
 cp "$HELPERS/v2ray" "$HELPERS/obfs4proxy" "$PKG/apps/BeIVPN/helpers/"
 cp "$OBJ/BeIVPNDeskbar.so" "$PKG/add-ons/BeIVPN/"
 cp resources/openvpn/ca.crt resources/openvpn/ta.key "$PKG/data/ivpn/"
 ln -s ../../../../apps/BeIVPN/BeIVPN \
 	"$PKG/data/deskbar/menu/Applications/Be IVPN"
+ln -s ../apps/BeIVPN/BeIVPN "$PKG/bin/be_ivpn"
 cp README.md LICENSE "$DOC/"
 cp third_party/sotoportego/LICENSE "$DOC/LICENSE.sotoportego"
 cp "$HELPERS/LICENSE.v2ray" "$HELPERS/LICENSE.obfs4proxy" "$DOC/"
@@ -133,6 +134,7 @@ urls			{
 provides		{
 	be_ivpn = $VERSION
 	app:BeIVPN = $VERSION
+	cmd:be_ivpn
 }
 requires		{
 	haiku >= r1~beta6
