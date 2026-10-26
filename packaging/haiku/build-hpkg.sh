@@ -1,10 +1,10 @@
 #!/bin/sh
-# Build IVPN for Haiku and package it as an .hpkg.
+# Build Be IVPN for Haiku and Renku OS and package it as an .hpkg.
 #
 # Run this ON Haiku R1/beta6 (x86_64), from anywhere:
 #     sh packaging/haiku/build-hpkg.sh
-# Result: ivpn_haiku-<version>-1-x86_64.hpkg in the project folder.
-# Install with: pkgman install ./ivpn_haiku-*.hpkg
+# Result: be_ivpn-<version>-1-x86_64.hpkg in the project folder.
+# Install with: pkgman install ./be_ivpn-*.hpkg
 #
 # Needs: pkgman install gcc haiku_devel curl_devel openssl3_devel
 # (it says what's missing). Built on beta6, the package also installs on
@@ -18,7 +18,7 @@ VERSION=$(sed -n 's/^#define IVPN_APP_VERSION[^"]*"\([^"]*\)".*/\1/p' \
 REVISION=1
 ARCH=$(getarch)
 OBJ="$HERE/build/haiku-$ARCH"
-OUT="$HERE/ivpn_haiku-$VERSION-$REVISION-$ARCH.hpkg"
+OUT="$HERE/be_ivpn-$VERSION-$REVISION-$ARCH.hpkg"
 
 say() { printf '\n==> %s\n' "$*"; }
 die() { printf '\nERROR: %s\n' "$*" >&2; exit 1; }
@@ -34,7 +34,7 @@ done
 
 CXX="${CXX:-g++}"
 # Additive, so packagers can pass their own flags
-CXXFLAGS="-std=c++17 -O2 -Wall -Wno-multichar -DIVPN_HAIKU ${CXXFLAGS:-}"
+CXXFLAGS="-std=c++17 -O2 -Wall -Wno-multichar ${CXXFLAGS:-}"
 # Strip at link time: xres appends the resources after the ELF data, so
 # stripping afterwards would cut them off.
 LDFLAGS="-s ${LDFLAGS:-}"
@@ -54,7 +54,7 @@ compile() {	# <object dir> <extra flags> <sources...>
 say "Compiling the app ($ARCH)"
 compile "$OBJ/app" "" src/core/*.cpp src/ui/*.cpp
 # shellcheck disable=SC2086
-$CXX -o "$OBJ/IVPN" "$OBJ"/app/*.o $LDFLAGS -lbe -lnetwork
+$CXX -o "$OBJ/BeIVPN" "$OBJ"/app/*.o $LDFLAGS -lbe -lnetwork
 
 say "Building the Deskbar item"
 # An add-on Deskbar loads, so position-independent; --no-undefined turns a
@@ -62,7 +62,7 @@ say "Building the Deskbar item"
 compile "$OBJ/pic" "-fPIC" src/deskbar/*.cpp src/core/DaemonConnection.cpp \
 	src/core/Model.cpp src/ui/DaemonClient.cpp
 # shellcheck disable=SC2086
-$CXX -shared -o "$OBJ/IVPNDeskbar.so" "$OBJ"/pic/*.o $LDFLAGS \
+$CXX -shared -o "$OBJ/BeIVPNDeskbar.so" "$OBJ"/pic/*.o $LDFLAGS \
 	-Wl,--no-undefined -lbe -lnetwork
 
 say "Building ivpnd (the IVPN service)"
@@ -73,7 +73,7 @@ $CXX -o "$OBJ/ivpnd" "$OBJ"/daemon/*.o $LDFLAGS -lbe -lnetwork -lcurl \
 	-lcrypto
 
 say "Resources"
-for pair in "IVPN:resources/IVPN.rdef" "ivpnd:resources/ivpnd.rdef"; do
+for pair in "BeIVPN:resources/IVPN.rdef" "ivpnd:resources/ivpnd.rdef"; do
 	bin=${pair%%:*}; rdef=${pair#*:}
 	rc -o "$OBJ/$bin.rsrc" "$rdef"
 	xres -o "$OBJ/$bin" "$OBJ/$bin.rsrc"
@@ -85,18 +85,19 @@ sh tests/run_haiku_tests.sh "$OBJ"
 
 say "Packaging"
 PKG="$OBJ/hpkg"
-DOC="$PKG/documentation/packages/ivpn_haiku"
-mkdir -p "$PKG/apps/IVPN" "$PKG/add-ons/IVPN" "$PKG/data/ivpn" \
+DOC="$PKG/documentation/packages/be_ivpn"
+mkdir -p "$PKG/apps/BeIVPN" "$PKG/add-ons/BeIVPN" "$PKG/data/ivpn" \
 	"$PKG/data/deskbar/menu/Applications" "$DOC"
-cp "$OBJ/IVPN" "$OBJ/ivpnd" "$PKG/apps/IVPN/"
-cp "$OBJ/IVPNDeskbar.so" "$PKG/add-ons/IVPN/"
+cp "$OBJ/BeIVPN" "$OBJ/ivpnd" "$PKG/apps/BeIVPN/"
+cp "$OBJ/BeIVPNDeskbar.so" "$PKG/add-ons/BeIVPN/"
 cp resources/openvpn/ca.crt resources/openvpn/ta.key "$PKG/data/ivpn/"
-ln -s ../../../../apps/IVPN/IVPN "$PKG/data/deskbar/menu/Applications/IVPN"
+ln -s ../../../../apps/BeIVPN/BeIVPN \
+	"$PKG/data/deskbar/menu/Applications/Be IVPN"
 cp README.md LICENSE "$DOC/"
 cp third_party/sotoportego/LICENSE "$DOC/LICENSE.sotoportego"
 
 cat > "$PKG/.PackageInfo" <<EOF
-name			ivpn_haiku
+name			be_ivpn
 version			$VERSION-$REVISION
 architecture	$ARCH
 summary			"Native IVPN client"
@@ -114,17 +115,23 @@ licenses		{
 	"MIT"
 }
 urls			{
-	"https://github.com/idumych/ivpn-vitruvian"
+	"https://github.com/idumych/be-ivpn"
 }
 provides		{
-	ivpn_haiku = $VERSION
-	app:IVPN = $VERSION
+	be_ivpn = $VERSION
+	app:BeIVPN = $VERSION
 }
 requires		{
 	haiku >= r1~beta6
 	cmd:openvpn
 	lib:libcurl
 	lib:libcrypto
+}
+replaces		{
+	ivpn_haiku
+}
+conflicts		{
+	ivpn_haiku
 }
 EOF
 

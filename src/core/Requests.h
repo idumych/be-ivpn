@@ -1,5 +1,5 @@
 /*
- * IVPN for Vitruvian - every request the app sends to the daemon.
+ * Be IVPN - every request the app sends to the daemon.
  * Field names mirror daemon/protocol/types/requests.go; tests/gocheck
  * verifies them against the real Go types.
  * Distributed under the terms of the GNU GPL v3.

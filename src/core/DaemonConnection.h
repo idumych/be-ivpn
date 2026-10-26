@@ -1,5 +1,5 @@
 /*
- * IVPN for Vitruvian - connection to the IVPN daemon (ivpn-service).
+ * Be IVPN - connection to the IVPN service (ivpnd).
  *
  * The daemon listens on 127.0.0.1 on a random port. The port and a 64-bit
  * secret are written to "port.txt" as "<port>:<secret-in-hex>".

@@ -1,5 +1,5 @@
 /*
- * IVPN for Vitruvian - location picker.
+ * Be IVPN - location picker.
  * Distributed under the terms of the GNU GPL v3.
  */
 #include "ServerListWindow.h"

@@ -1,5 +1,3 @@
-*.deb
 build/
 *.o
-.vos-sdk/
 *.hpkg

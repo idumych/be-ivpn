@@ -1,5 +1,5 @@
 /*
- * IVPN for Vitruvian - main window.
+ * Be IVPN - main window.
  *
  * Three cards:
  *   - "service": the IVPN service is not reachable (retries automatically)

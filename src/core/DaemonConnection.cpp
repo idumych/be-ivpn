@@ -1,5 +1,5 @@
 /*
- * IVPN for Vitruvian - connection to the IVPN daemon (ivpn-service).
+ * Be IVPN - connection to the IVPN service (ivpnd).
  * Distributed under the terms of the GNU GPL v3.
  */
 #include "DaemonConnection.h"
@@ -38,18 +38,10 @@ DaemonConnection::~DaemonConnection()
 std::vector<std::string>
 DaemonConnection::PortFileCandidates()
 {
-#ifdef IVPN_HAIKU
 	// ivpnd, the app's own service (Haiku's user settings directory)
 	const char* home = getenv("HOME");
 	return {std::string(home != nullptr ? home : "/boot/home")
 		+ "/config/settings/IVPN/daemon/port.txt"};
-#endif
-	// Same lookup order as the official ivpn CLI / UI on Linux.
-	return {
-		"/etc/opt/ivpn/mutable/port.txt",
-		"/opt/ivpn/mutable/port.txt",
-		"/var/snap/ivpn/common/opt/ivpn/mutable/port.txt",
-	};
 }
 
 

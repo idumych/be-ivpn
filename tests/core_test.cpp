@@ -403,7 +403,7 @@ TestDaemonConnection(const char* portFile)
 		return;
 	}
 
-	uint32_t helloIdx = conn.SendHello("1.0.0:Vitruvian UI");
+	uint32_t helloIdx = conn.SendHello("1.0.0:Haiku UI");
 	CHECK(helloIdx == 1);
 
 	auto waitFor = [&](size_t count) {

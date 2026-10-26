@@ -1,5 +1,5 @@
 /*
- * IVPN for Vitruvian - connection status header.
+ * Be IVPN - connection status header.
  * Distributed under the terms of the GNU GPL v3.
  */
 #include "StatusView.h"

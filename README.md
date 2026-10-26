@@ -1,10 +1,12 @@
-# IVPN for Vitruvian
+# Be IVPN
 
-A native window for IVPN on Vitruvian (VitruvianOS), a BeOS-like OS based on
-Linux, written against its Haiku API. It replaces the Electron `ivpn-ui`, which cannot run on Vitruvian. The VPN work is still done by the
-official IVPN background service (`ivpn-service`, from the `ivpn` package),
-the same one the `ivpn` command uses. So the app, the command and the official
-app all stay in sync.
+A native IVPN client for **Haiku** and **Renku OS**, written against the
+Haiku API. IVPN's own service doesn't exist for these systems, so Be IVPN
+brings its own, **ivpnd**: it logs in and fetches the server list from
+IVPN's API, and runs the tunnels with code from [Sotoportego](https://github.com/atomozero/Sotoportego)
+by [atomozero](https://github.com/atomozero) (MIT), a native VPN client for
+Haiku: WireGuard built in (Haiku has no `wg`), and OpenVPN through the
+`openvpn` package. The window starts ivpnd when needed.
 
 ## What it does
 
@@ -12,111 +14,41 @@ app all stay in sync.
 - Connect or disconnect, with a live status (green / amber / red) and time connected
 - Choose a location from a searchable list with latency, or Fastest / Random
 - Protocol (WireGuard or OpenVPN) and port
-- Obfuscation, for networks that block VPNs: V2Ray (QUIC or TCP) for
-  WireGuard; obfs3, obfs4 (with IAT modes) or V2Ray for OpenVPN
 - A Deskbar item that shows the connection status (right-click it to
-  connect, disconnect or open the app; **IVPN → Show in Deskbar** turns it
-  on or off)
-- Firewall (kill switch), "firewall on connect", AntiTracker and Hardcore mode
+  connect, disconnect or open the app; **Be IVPN → Show in Deskbar** turns
+  it on or off)
+- AntiTracker and Hardcore mode
 - Desktop notifications when the connection comes up or drops
-- Changing location, protocol, port, obfuscation or AntiTracker while connected reconnects
-  automatically, like the official app
+- Changing location, protocol, port or AntiTracker while connected
+  reconnects automatically, like the official app
 
-Closing the window does **not** disconnect the VPN; the service keeps running.
+Closing the window does **not** disconnect the VPN; ivpnd keeps running.
 
-Not included yet: multi-hop, split tunnel, custom DNS, captcha logins (log
-in once with `ivpn login` if IVPN asks for one), and Enhanced App
-Authentication.
+Not included yet: firewall (kill switch; Haiku has no packet filter),
+obfuscation, multi-hop, split tunnel, custom DNS, captcha logins and
+Enhanced App Authentication.
 
-## Screenshots
+## Install (Haiku R1/beta6 or newer, or Renku OS; x86_64)
 
-![The IVPN window, connected to Seattle over WireGuard](docs/screenshots/vitruvianos-connected.png)
-
-Connected to the fastest server over WireGuard, on VitruvianOS at 800×600.
-
-![The Choose location window, with latencies](docs/screenshots/vitruvianos-locations.png)
-
-Choosing a location: search, Fastest or Random, and each server's latency.
-
-![The Deskbar lamp with its tooltip](docs/screenshots/vitruvianos-deskbar-tooltip.png)
-
-The Deskbar lamp is green while protected; hover over it for the status.
-
-![The Deskbar item's menu](docs/screenshots/vitruvianos-deskbar.png)
-
-Right-click the lamp to connect, disconnect or open the app.
-
-## Install (Vitruvian 0.6.2 or newer, x86_64 or ARM64)
-
-Open **Terminal** and run these one block at a time.
-
-**1. Install the IVPN service** (official IVPN repository):
-
-```sh
-sudo apt update && sudo apt install -y gpg curl
-curl -fsSL https://repo.ivpn.net/stable/debian/generic.gpg | gpg --dearmor > ~/ivpn-archive-keyring.gpg
-sudo mv ~/ivpn-archive-keyring.gpg /usr/share/keyrings/ivpn-archive-keyring.gpg
-sudo chown root:root /usr/share/keyrings/ivpn-archive-keyring.gpg && sudo chmod 644 /usr/share/keyrings/ivpn-archive-keyring.gpg
-curl -fsSL https://repo.ivpn.net/stable/debian/generic.list | sudo tee /etc/apt/sources.list.d/ivpn.list
-sudo apt update && sudo apt install -y ivpn
-```
-
-Install `ivpn`, **not** `ivpn-ui` (that is the Electron app).
-
-Check the service is running:
-
-```sh
-ivpn status
-```
-
-**2. Install this app.** Download the `.deb` for your machine from the
-[latest release](https://github.com/idumych/ivpn-vitruvian/releases/latest)
-(`dpkg --print-architecture` tells you which). Then, in the folder where you
-saved it, run:
-
-```sh
-sudo apt install ./ivpn-vitruvian_1.1.0_amd64.deb    # Intel/AMD PCs
-sudo apt install ./ivpn-vitruvian_1.1.0_arm64.deb    # ARM64 machines
-```
-
-**3. Open it** from the Deskbar: **Applications → IVPN**.
-
-To remove it: `sudo apt remove ivpn-vitruvian`
-
-## Haiku (R1/beta6 or newer, x86_64)
-
-The same app also runs on Haiku. IVPN's own service doesn't
-exist for Haiku, so the package brings its own, **ivpnd**: it logs in and
-fetches the server list from IVPN's API, and runs the tunnels with code from
-[Sotoportego](https://github.com/atomozero/Sotoportego) by
-[atomozero](https://github.com/atomozero) (MIT), a native VPN client for
-Haiku: WireGuard built in (Haiku has no `wg`), and OpenVPN
-through the `openvpn` package. The window starts ivpnd when needed, and
-closing the window still leaves the VPN connected.
-
-Download `ivpn_haiku-<version>-1-x86_64.hpkg` from the
-[latest release](https://github.com/idumych/ivpn-vitruvian/releases/latest)
+Download `be_ivpn-<version>-1-x86_64.hpkg` from the
+[latest release](https://github.com/idumych/be-ivpn/releases/latest)
 and, in Terminal, in the folder where you saved it:
 
 ```sh
-pkgman install ./ivpn_haiku-*.hpkg
+pkgman install ./be_ivpn-*.hpkg
 ```
 
-This also installs `openvpn`. Open it from the Deskbar:
-**Applications → IVPN**.
+This also installs `openvpn`, and replaces the older `ivpn_haiku` package
+if you have it. Open it from the Deskbar: **Applications → Be IVPN**.
 
 Tested on Haiku R1/beta6 (x86_64, in VirtualBox): logging in, WireGuard
 and OpenVPN connections (IVPN's own check confirms the traffic leaves from an
 IVPN server), AntiTracker, reconnecting when settings change while connected,
-and disconnecting, which puts the routes and DNS back as they were. Built on
-beta6, the package should also install on Renku OS and newer Haiku; that is
-not tested yet.
+and disconnecting, which puts the routes and DNS back as they were. The same
+package installs on Renku OS, but it is not tested there yet.
 
-What's different on Haiku:
+Good to know:
 
-- **No firewall (kill switch)**: Haiku has no packet filter, so those
-  options are hidden.
-- **No obfuscation, multi-hop or split tunnel** yet.
 - **IPv4 only**: Haiku's tunnel driver has no IPv6. On a network with IPv6,
   IPv6 traffic does not go through the VPN.
 - While connected, ivpnd points `/boot/system/settings/network/resolv.conf`
@@ -125,43 +57,24 @@ What's different on Haiku:
 - ivpnd keeps its files in `~/config/settings/IVPN/daemon/` (the session is
   in `account.json`, readable only by you).
 
-To build it on Haiku R1/beta6:
+## If something goes wrong
+
+- **"The IVPN service is not reachable":** ivpnd normally starts by itself.
+  If it doesn't, run `/boot/system/apps/BeIVPN/ivpnd` in Terminal to see
+  why. The app retries every few seconds.
+- **Settings** are saved in `~/config/settings/IVPN/settings.json`. Delete
+  that file to reset them.
+
+## Build it yourself
+
+On Haiku R1/beta6 (the package then installs on newer Haiku and Renku OS):
 
 ```sh
 pkgman install gcc haiku_devel curl_devel openssl3_devel
 sh packaging/haiku/build-hpkg.sh
 ```
 
-## If something goes wrong
-
-- **"The IVPN service is not reachable":** start it with
-  `sudo systemctl enable --now ivpn-service`. The app retries every few seconds.
-- **The connection fails right away:** try it from Terminal with
-  `ivpn connect -fastest`. If that fails too, the problem is in the service or
-  system rather than this app, and `sudo journalctl -u ivpn-service` shows why.
-- **Settings** are saved in `~/config/settings/IVPN/settings.json`. Delete
-  that file to reset them.
-
-## Build it yourself
-
-On a Vitruvian machine, in this folder:
-
-```sh
-./build.sh
-```
-
-This uses only what Vitruvian already has (g++, curl, dpkg). The first time,
-it downloads the Vitruvian headers that match your installed version. The
-result is a fresh `ivpn-vitruvian_<version>_<arch>.deb` for that machine.
-
-To build the ARM64 package on an x86_64 PC instead, unpack the ARM64
-Vitruvian image's root filesystem somewhere (it is the "sysroot") and run:
-
-```sh
-TARGET_ARCH=arm64 VOS_VERSION=0.6.2 VOS_SRC=/path/to/Vitruvian-source \
-CXX="clang++ --target=aarch64-linux-gnu --sysroot=/path/to/arm64-root -fuse-ld=lld" \
-STRIP=llvm-strip ./build.sh
-```
+The result is `be_ivpn-<version>-1-x86_64.hpkg` in this folder.
 
 ## How it is built (for developers)
 
@@ -172,12 +85,14 @@ src/core/   protocol + data model, plain C++17, no Haiku API
             Model             server list, pings, settings, Connect params
             Requests.h        every request the app sends
 src/ui/     Haiku API window, location picker, status header
-src/ivpnd/  ivpnd, the IVPN service for Haiku (same JSON protocol)
+src/deskbar/ the Deskbar item (BeIVPNDeskbar.so)
+src/ivpnd/  ivpnd, the IVPN service (the same JSON protocol as IVPN's
+            official ivpn-service)
             DaemonLogic       API answers -> responses, tunnel configs
                               (no Haiku API; tests/daemon_logic_test.cpp)
             Daemon            the background app: clients, workers, tunnels
 third_party/sotoportego/      WireGuard + OpenVPN backends (MIT), see its README
-tests/      core tests against a fake daemon (any Linux: tests/run_tests.sh)
+tests/      core tests against a fake daemon (on Linux: tests/run_tests.sh)
             gocheck/: decodes every request with the real daemon's Go
             types (unknown fields rejected)
 third_party/json.hpp   nlohmann/json 3.11.3 (MIT)
@@ -186,7 +101,7 @@ third_party/json.hpp   nlohmann/json 3.11.3 (MIT)
 ## Credits
 
 - **[Sotoportego](https://github.com/atomozero/Sotoportego) by
-  [atomozero](https://github.com/atomozero)**: the Haiku service (ivpnd)
+  [atomozero](https://github.com/atomozero)**: the service (ivpnd)
   runs its tunnels with Sotoportego's WireGuard backend, written from
   scratch for Haiku, and its OpenVPN backend, with its tun, routing and DNS
   handling. Used under the MIT License (`third_party/sotoportego/LICENSE`);

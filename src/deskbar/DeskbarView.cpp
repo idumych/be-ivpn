@@ -1,5 +1,5 @@
 /*
- * IVPN for Vitruvian - the Deskbar item.
+ * Be IVPN - the Deskbar item.
  * Distributed under the terms of the GNU GPL v3.
  */
 #include "DeskbarView.h"
@@ -394,7 +394,8 @@ IVPNDeskbarView::_ShowMenu(BPoint where)
 		connect->SetEnabled(fState == kDisconnected);
 		menu->AddItem(connect);
 	}
-	menu->AddItem(new BMenuItem("Open IVPN", new BMessage(kMsgOpenApp)));
+	menu->AddItem(new BMenuItem("Open " IVPN_APP_NAME,
+		new BMessage(kMsgOpenApp)));
 	menu->AddSeparatorItem();
 	menu->AddItem(new BMenuItem("Remove from Deskbar",
 		new BMessage(kMsgRemove)));

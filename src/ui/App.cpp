@@ -1,8 +1,8 @@
 /*
- * IVPN for Vitruvian - native client for the IVPN service.
+ * Be IVPN - native client for the IVPN service.
  *
- * Talks to the same background service (ivpn-service) as the official
- * Linux app and the "ivpn" command, so all of them can be used together.
+ * Talks to ivpnd, its own background service, which keeps the VPN
+ * running while the window is closed.
  *
  * Distributed under the terms of the GNU GPL v3.
  */
@@ -44,7 +44,7 @@ public:
 				_ActivateWindow();
 				break;
 			case B_SILENT_RELAUNCH:
-				// launched again (e.g. "Open IVPN" in the Deskbar item)
+				// launched again (e.g. "Open Be IVPN" in the Deskbar item)
 				_ActivateWindow();
 				break;
 			default:
@@ -56,15 +56,9 @@ public:
 	{
 		BAlert* alert = new BAlert("about",
 			IVPN_APP_NAME " " IVPN_APP_VERSION "\n\n"
-#ifdef IVPN_HAIKU
 			"Native IVPN client for Haiku.\n"
 			"Its service, ivpnd, keeps the VPN running; the tunnels use code "
 			"from Sotoportego (MIT).\n\n"
-#else
-			"Native IVPN client for Vitruvian.\n"
-			"Uses the IVPN service (ivpn-service), the same one used by the "
-			"official app and the ivpn command.\n\n"
-#endif
 			"Closing this window does not disconnect the VPN.\n\n"
 			"GNU GPL v3. IVPN is a trademark of Privatus Limited; this app is "
 			"not made by IVPN.",

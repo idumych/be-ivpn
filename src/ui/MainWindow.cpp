@@ -1,5 +1,5 @@
 /*
- * IVPN for Vitruvian - main window.
+ * Be IVPN - main window.
  * Distributed under the terms of the GNU GPL v3.
  */
 #include "MainWindow.h"
@@ -246,17 +246,10 @@ MainWindow::_BuildServiceCard()
 	fServiceTitle->SetFont(&bold);
 	fServiceDetail = new BStringView("serviceDetail", "");
 
-#ifdef IVPN_HAIKU
 	BStringView* help = new BStringView("serviceHelp",
 		"The IVPN service (ivpnd) normally starts by itself.");
 	BStringView* help2 = new BStringView("serviceHelp2",
 		"If it doesn't, run in Terminal:  " IVPND_PATH);
-#else
-	BStringView* help = new BStringView("serviceHelp",
-		"Make sure the ivpn package is installed and its service is running.");
-	BStringView* help2 = new BStringView("serviceHelp2",
-		"In Terminal:  sudo systemctl enable --now ivpn-service");
-#endif
 	help2->SetFont(be_fixed_font);
 
 	BView* view = new BView("serviceCard", 0);
@@ -365,12 +358,10 @@ MainWindow::_BuildMainCard()
 		"Hardcore mode (also block Google and Facebook)",
 		new BMessage(kMsgAntiTrackerHard));
 
-#ifdef IVPN_HAIKU
 	// Haiku has no packet filter for a kill switch
 	fSettings.firewallOnConnect = false;
 	fFirewallBox->Hide();
 	fFirewallOnConnectBox->Hide();
-#endif
 	fFirewallOnConnectBox->SetValue(fSettings.firewallOnConnect);
 	fAntiTrackerBox->SetValue(fSettings.antiTracker);
 	fHardcoreBox->SetValue(fSettings.antiTrackerHardcore);
@@ -626,11 +617,7 @@ MainWindow::MessageReceived(BMessage* message)
 				break;
 			BAlert* alert = new BAlert("logout",
 				"Log out of IVPN on this computer?\n\n"
-#ifdef IVPN_HAIKU
 				"The VPN will be disconnected.",
-#else
-				"The VPN will be disconnected and the firewall turned off.",
-#endif
 				"Cancel", "Log out", NULL, B_WIDTH_AS_USUAL, B_WARNING_ALERT);
 			alert->SetShortcut(0, B_ESCAPE);
 			if (alert->Go() == 1)
@@ -899,13 +886,8 @@ MainWindow::_HandleLoginResponse(const json& m)
 
 		case kApiCaptchaRequired:
 		case kApiCaptchaInvalid:
-#ifdef IVPN_HAIKU
 			fLoginStatus->SetText("IVPN asks for a captcha, which this app "
 				"can't show yet. Please try again later.");
-#else
-			fLoginStatus->SetText("IVPN asks for a captcha. Log in once in "
-				"Terminal with:  ivpn login");
-#endif
 			return;
 
 		default:
@@ -1440,7 +1422,7 @@ MainWindow::_SetDeskbarItem(bool show, bool quiet)
 		status = deskbar.AddItem(&ref);
 	if (status != B_OK && !quiet) {
 		BString text;
-		text.SetToFormat("Could not add IVPN to the Deskbar:\n%s",
+		text.SetToFormat("Could not add " IVPN_APP_NAME " to the Deskbar:\n%s",
 			strerror(status));
 		(new BAlert("deskbar", text, "OK", NULL, NULL, B_WIDTH_AS_USUAL,
 			B_STOP_ALERT))->Go(NULL);

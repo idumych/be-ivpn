@@ -1,9 +1,9 @@
 /*
- * IVPN for Vitruvian - the Deskbar item: a lamp in the Deskbar tray that
+ * Be IVPN - the Deskbar item: a lamp in the Deskbar tray that
  * shows the VPN state (green protected, amber connecting, red not
  * protected, grey service not running or not logged in).
  *
- * Built as an add-on library (IVPNDeskbar.so) that Deskbar loads through
+ * Built as an add-on library (BeIVPNDeskbar.so) that Deskbar loads through
  * instantiate_deskbar_item(). Deskbar then archives the view and rebuilds
  * it with Instantiate(), so the view must be archivable. It has its own
  * connection to the IVPN service, so it works while the IVPN window is

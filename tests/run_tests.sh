@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds and runs the core tests on any Linux machine (no Vitruvian needed).
+# Builds and runs the core tests on any Linux machine (no Haiku needed).
 # Optional: IVPN_GOCHECK=<path to gocheck binary> to verify our JSON against
 # the real IVPN daemon types.
 set -e

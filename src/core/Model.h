@@ -1,5 +1,5 @@
 /*
- * IVPN for Vitruvian - data model: servers, pings, user settings and
+ * Be IVPN - data model: servers, pings, user settings and
  * building "Connect" requests for the daemon.
  *
  * No Be/Haiku API dependency (unit-testable on plain Linux).

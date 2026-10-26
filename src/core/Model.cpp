@@ -1,5 +1,5 @@
 /*
- * IVPN for Vitruvian - data model.
+ * Be IVPN - data model.
  * Distributed under the terms of the GNU GPL v3.
  */
 #include "Model.h"

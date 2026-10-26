@@ -1,5 +1,5 @@
 /*
- * IVPN for Vitruvian - location picker: searchable list of servers with
+ * Be IVPN - location picker: searchable list of servers with
  * their latency, plus "Fastest" and "Random".
  * Distributed under the terms of the GNU GPL v3.
  */

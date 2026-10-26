@@ -1,5 +1,5 @@
 /*
- * IVPN for Vitruvian - the header showing whether the connection is
+ * Be IVPN - the header showing whether the connection is
  * protected: a coloured status lamp, a headline and a detail line.
  * Distributed under the terms of the GNU GPL v3.
  */

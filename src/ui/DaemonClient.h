@@ -1,5 +1,5 @@
 /*
- * IVPN for Vitruvian - bridges DaemonConnection to the Be messaging world.
+ * Be IVPN - bridges DaemonConnection to the Be messaging world.
  * Every line received from the daemon is posted to the target as
  * kMsgDaemonLine; a lost connection is posted as kMsgDaemonClosed.
  * Distributed under the terms of the GNU GPL v3.

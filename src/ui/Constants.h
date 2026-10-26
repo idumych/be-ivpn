@@ -1,5 +1,5 @@
 /*
- * IVPN for Vitruvian - shared constants.
+ * Be IVPN - shared constants.
  * Distributed under the terms of the GNU GPL v3.
  */
 #ifndef IVPN_CONSTANTS_H
@@ -8,22 +8,17 @@
 #include <SupportDefs.h>
 
 #define IVPN_APP_SIGNATURE	"application/x-vnd.IVPN-Client"
-#define IVPN_APP_NAME		"IVPN"
+#define IVPN_APP_NAME		"Be IVPN"
 #define IVPN_APP_VERSION	"1.1.0"
 
 // The Deskbar item: an add-on library Deskbar loads (see src/deskbar)
 #define IVPN_DESKBAR_ITEM_NAME	"IVPN"
-#ifdef IVPN_HAIKU
+#define IVPN_DESKBAR_ADDON_PATH	"/boot/system/add-ons/BeIVPN/BeIVPNDeskbar.so"
 // Haiku has no ivpn-service: the app ships its own, ivpnd (src/ivpnd),
 // and starts it when it isn't running.
 #define IVPN_PLATFORM			"Haiku"
-#define IVPN_DESKBAR_ADDON_PATH	"/boot/system/add-ons/IVPN/IVPNDeskbar.so"
 #define IVPND_SIGNATURE			"application/x-vnd.IVPN-Daemon"
-#define IVPND_PATH				"/boot/system/apps/IVPN/ivpnd"
-#else
-#define IVPN_PLATFORM			"Vitruvian"
-#define IVPN_DESKBAR_ADDON_PATH	"/system/add-ons/ivpn-vitruvian/IVPNDeskbar.so"
-#endif
+#define IVPND_PATH				"/boot/system/apps/BeIVPN/ivpnd"
 // Present (in B_USER_SETTINGS_DIRECTORY) when the user removed the Deskbar
 // item; otherwise the app puts it back at launch, e.g. after an upgrade.
 #define IVPN_DESKBAR_HIDDEN_FILE	"IVPN/deskbar_hidden"
