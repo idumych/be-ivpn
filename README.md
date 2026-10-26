@@ -34,6 +34,16 @@ Closing the window does **not** disconnect the VPN; ivpnd keeps running.
 Not included yet: multi-hop, split tunnel, custom DNS, captcha logins and
 Enhanced App Authentication.
 
+## Screenshots
+
+![Be IVPN connected over WireGuard with V2Ray obfuscation and the firewall on](docs/screenshots/renku-connected-v2ray.png)
+
+Connected over WireGuard through V2Ray (QUIC), with the firewall on, on Renku OS.
+
+![Be IVPN disconnected with the firewall blocking internet access](docs/screenshots/renku-firewall-blocking.png)
+
+Disconnected with the firewall on: nothing gets out until you connect again.
+
 ## Install (Haiku R1/beta6 or newer, or Renku OS; x86_64)
 
 Download `be_ivpn-<version>-1-x86_64.hpkg` from the
@@ -47,11 +57,15 @@ pkgman install ./be_ivpn-*.hpkg
 This also installs `openvpn`, and replaces the older `ivpn_haiku` package
 if you have it. Open it from the Deskbar: **Applications → Be IVPN**.
 
-Tested on Haiku R1/beta6 (x86_64, in VirtualBox): logging in, WireGuard
-and OpenVPN connections (IVPN's own check confirms the traffic leaves from an
-IVPN server), AntiTracker, reconnecting when settings change while connected,
-and disconnecting, which puts the routes and DNS back as they were. The same
-package installs on Renku OS, but it is not tested there yet.
+Version 1.2.0 was tested on Renku OS (nightly of 25 October 2026, x86_64,
+in VirtualBox): WireGuard and OpenVPN, each plain and over V2Ray (QUIC and
+TCP), and OpenVPN with obfs3 and obfs4 (IAT 0 and 1); IVPN's own check
+confirmed the traffic leaves from an IVPN server every time. Also the
+firewall: on and off, after a drop, on connect only, with DHCP putting the
+default route back, and on a machine with two network connections. It was
+not tested on Haiku R1/beta6 itself (where it is built, and where 1.1.0 was
+tested). There is no Linux version: ivpnd runs the tunnels through Haiku's
+own network stack.
 
 Good to know:
 
