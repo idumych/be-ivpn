@@ -59,8 +59,10 @@ private:
 			std::vector<std::string> fApiHosts;
 			// API host -> the "iface gateway" it is pinned through
 			std::map<std::string, std::string> fPinned;
-			// IPv6 defaults taken out, put back when it is turned off
-			std::vector<DefaultRoute> fHeldV6;
+			// Defaults taken out (a machine can have several carriers), put
+			// back when it is turned off. The first IPv4 one is also
+			// TunDevice's held gateway, which tunnels use.
+			std::vector<DefaultRoute> fHeld;
 };
 
 // The `route` command's output, for ParseDefaultRoutes().

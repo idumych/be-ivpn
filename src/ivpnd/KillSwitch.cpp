@@ -114,14 +114,14 @@ KillSwitch::Load()
 	std::string iface = state.value("iface", "");
 	if (!gateway.empty() && !iface.empty())
 		TunDevice::SetHeldGateway(gateway.c_str(), iface.c_str());
-	if (state.contains("v6") && state["v6"].is_array()) {
-		for (const json& r : state["v6"]) {
+	if (state.contains("held") && state["held"].is_array()) {
+		for (const json& r : state["held"]) {
 			DefaultRoute route;
-			route.v6 = true;
+			route.v6 = r.value("v6", false);
 			route.gateway = r.value("gateway", "");
 			route.iface = r.value("iface", "");
 			if (!route.gateway.empty() && !route.iface.empty())
-				fHeldV6.push_back(route);
+				fHeld.push_back(route);
 		}
 	}
 	Enable();
@@ -154,18 +154,20 @@ KillSwitch::Disable(bool tunnelUp)
 	bool known = TunDevice::HeldGateway(gateway, iface);
 	TunDevice::SetDefaultRouteHeld(false);
 	TunDevice::SetHeldGateway("", "");
-	// With the tunnel up, its backend puts the carrier default back when
-	// it goes down; without one, nothing would.
-	if (!tunnelUp && known) {
-		bool present = false;
-		for (const DefaultRoute& r : ParseDefaultRoutes(RouteTable()))
-			present = present || (!r.v6 && !IsTun(r.iface));
-		if (!present)
-			TunDevice::RestoreDefaultRoute(gateway, iface);
+	std::vector<DefaultRoute> present = ParseDefaultRoutes(RouteTable());
+	for (const DefaultRoute& r : fHeld) {
+		// With the tunnel up, its backend puts its carrier default back
+		// when it goes down
+		if (tunnelUp && known && !r.v6 && r.gateway == gateway.String()
+			&& r.iface == iface.String())
+			continue;
+		bool there = false;
+		for (const DefaultRoute& p : present)
+			there = there || p == r;
+		if (!there)
+			Route("add", r);
 	}
-	for (const DefaultRoute& r : fHeldV6)
-		Route("add", r);
-	fHeldV6.clear();
+	fHeld.clear();
 	_Save();
 }
 
@@ -198,19 +200,25 @@ KillSwitch::_RemoveCarrierDefaults()
 	for (const DefaultRoute& r : ParseDefaultRoutes(RouteTable())) {
 		if (IsTun(r.iface))
 			continue;
-		if (r.v6) {
-			bool known = false;
-			for (const DefaultRoute& h : fHeldV6)
-				known = known || h == r;
-			if (!known)
-				fHeldV6.push_back(r);
-		} else {
-			// A new network (or DHCP) brings a new gateway: the API pins
-			// must follow it.
+		bool known = false;
+		for (const DefaultRoute& h : fHeld)
+			known = known || h == r;
+		if (!known)
+			fHeld.push_back(r);
+		if (!r.v6) {
+			// The first carrier is the one tunnels and API pins use; a new
+			// network (or DHCP) can bring a new gateway, and the pins must
+			// follow it.
 			BString oldGateway, oldIface;
 			bool hadOld = TunDevice::HeldGateway(oldGateway, oldIface);
-			if (!hadOld || r.gateway != oldGateway.String()
-				|| r.iface != oldIface.String()) {
+			bool oldStillHeld = false;
+			for (const DefaultRoute& h : fHeld) {
+				oldStillHeld = oldStillHeld || (hadOld && !h.v6
+					&& h.gateway == oldGateway.String()
+					&& h.iface == oldIface.String() && !(h == r));
+			}
+			if (!hadOld || (!oldStillHeld && (r.gateway != oldGateway.String()
+					|| r.iface != oldIface.String()))) {
 				_UnpinAll();
 				TunDevice::SetHeldGateway(r.gateway.c_str(), r.iface.c_str());
 			}
@@ -254,10 +262,11 @@ KillSwitch::_Save() const
 		state["gateway"] = gateway.String();
 		state["iface"] = iface.String();
 	}
-	json v6 = json::array();
-	for (const DefaultRoute& r : fHeldV6)
-		v6.push_back({{"gateway", r.gateway}, {"iface", r.iface}});
-	state["v6"] = v6;
+	json held = json::array();
+	for (const DefaultRoute& r : fHeld)
+		held.push_back({{"v6", r.v6}, {"gateway", r.gateway},
+			{"iface", r.iface}});
+	state["held"] = held;
 	std::ofstream out(fStatePath, std::ios::trunc);
 	out << state.dump(1, '\t') << "\n";
 }
