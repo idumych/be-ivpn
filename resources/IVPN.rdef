@@ -4,10 +4,10 @@ resource app_flags B_SINGLE_LAUNCH;
 
 resource app_version {
 	major  = 1,
-	middle = 1,
+	middle = 2,
 	minor  = 0,
 	variety = B_APPV_FINAL,
 	internal = 0,
 	short_info = "Be IVPN",
-	long_info = "Be IVPN 1.1.0 - native IVPN client for Haiku"
+	long_info = "Be IVPN 1.2.0 - native IVPN client for Haiku"
 };

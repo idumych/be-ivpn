@@ -1,0 +1,1 @@
+A native window and Deskbar item for the IVPN VPN service, with its own background service (ivpnd) for WireGuard and OpenVPN, a kill switch, and obfuscation through V2Ray and obfs4proxy. Not made by IVPN.

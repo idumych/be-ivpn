@@ -9,7 +9,7 @@
 
 #define IVPN_APP_SIGNATURE	"application/x-vnd.IVPN-Client"
 #define IVPN_APP_NAME		"Be IVPN"
-#define IVPN_APP_VERSION	"1.1.0"
+#define IVPN_APP_VERSION	"1.2.0"
 
 // The Deskbar item: an add-on library Deskbar loads (see src/deskbar)
 #define IVPN_DESKBAR_ITEM_NAME	"IVPN"

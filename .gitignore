@@ -1,3 +1,5 @@
 build/
 *.o
 *.hpkg
+dist/
+.haiku-headers/
