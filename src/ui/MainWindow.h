@@ -106,6 +106,7 @@ private:
 	bool					fWireGuardDisabled;
 	bool					fObfsproxyDisabled;
 	bool					fV2RayDisabled;
+	bool					fFirewallDisabled;
 	bool					fPendingConnect;	// asked from the Deskbar
 
 	// account

@@ -6,7 +6,8 @@
  * "<port>:<secret>" to ~/config/settings/IVPN/daemon/port.txt, and answers
  * newline-delimited JSON in the same format. Logins and server lists come
  * from IVPN's API; tunnels are run by Sotoportego's WireGuard and OpenVPN
- * backends (third_party/sotoportego).
+ * backends (third_party/sotoportego), behind a V2Ray or obfs4proxy helper
+ * when obfuscation is on. The kill switch works on routes (KillSwitch.h).
  *
  * Threads: an accept thread and one reader per client post every request to
  * the looper; API calls and pings run on worker threads that post their
@@ -24,10 +25,13 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "../core/Json.h"
 #include "../ui/Constants.h"
 #include "DaemonLogic.h"
+#include "KillSwitch.h"
 
 class BMessageRunner;
 class VPNBackend;
@@ -40,6 +44,7 @@ class WireGuardBackend;
 namespace ivpnd {
 
 struct Client;
+class ProxyProcess;
 
 class Daemon : public BApplication {
 public:
@@ -65,6 +70,9 @@ private:
 			void				_HandleRequest(Client& client,
 									const nlohmann::json& request);
 			nlohmann::json		_HelloResp() const;
+			nlohmann::json		_KillSwitchResp() const;
+			void				_SetKillSwitch(bool enabled);
+			void				_UpdateApiHosts();
 			void				_SendState(int32 id, uint32 idx);
 
 	// workers
@@ -81,7 +89,8 @@ private:
 
 	// connection
 			void				_Connect(const nlohmann::json& params);
-			void				_StartTunnel();
+			void				_PrepareTunnel();
+			void				_StartTunnel(int localPort);
 			void				_Disconnect();
 			void				_BackendState(BMessage* message);
 			void				_TunnelDown(bool failure,
@@ -113,6 +122,15 @@ private:
 			int64				fConnectedSince;
 			nlohmann::json		fPending;		// Connect params to run next
 			BMessageRunner*		fDnsCheck;
+
+			// obfuscation: the running helper, and the hosts pinned to the
+			// carrier for this connection (ip, "iface gateway")
+			std::shared_ptr<ProxyProcess> fProxy;
+			std::vector<std::pair<std::string, std::string> > fConnPins;
+
+			KillSwitch			fKillSwitch;
+			bool				fFirewallByConnect;	// "FirewallOn" turned it on
+			BMessageRunner*		fKillSwitchCheck;
 };
 
 }	// namespace ivpnd

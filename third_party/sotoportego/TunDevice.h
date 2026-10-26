@@ -38,7 +38,26 @@ bool	RunRoute(const char* const argv[]);
 // IP) and `iface` (the physical interface it leaves on) and returns true.
 // Needed to pin a VPN server / WireGuard endpoint to the carrier so its own
 // packets don't loop back into the tunnel they carry.
+// IVPN: defaults through a tun/N interface are skipped, and while the
+// default route is held (below) the held gateway is returned when the table
+// has no carrier default.
 bool	DefaultGateway(BString& gateway, BString& iface);
+
+// IVPN: kill switch support. While held, the carrier's default route stays
+// out of the routing table: RestoreDefaultRoute() only remembers the gateway
+// instead of adding it back, so nothing leaves outside the tunnel.
+void	SetDefaultRouteHeld(bool held);
+bool	DefaultRouteHeld();
+void	SetHeldGateway(const BString& gateway, const BString& iface);
+bool	HeldGateway(BString& gateway, BString& iface);
+
+// IVPN: puts the carrier default route back after a tunnel, or just
+// remembers it while the default route is held.
+bool	RestoreDefaultRoute(const BString& gateway, const BString& iface);
+
+// IVPN: true for 127.0.0.0/8, which must never be pinned to a gateway (the
+// endpoint of a tunnel that runs through a local obfuscation proxy).
+bool	IsLoopback(const BString& ip);
 
 }	// namespace TunDevice
 

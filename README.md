@@ -6,7 +6,10 @@ brings its own, **ivpnd**: it logs in and fetches the server list from
 IVPN's API, and runs the tunnels with code from [Sotoportego](https://github.com/atomozero/Sotoportego)
 by [atomozero](https://github.com/atomozero) (MIT), a native VPN client for
 Haiku: WireGuard built in (Haiku has no `wg`), and OpenVPN through the
-`openvpn` package. The window starts ivpnd when needed.
+`openvpn` package. For obfuscation it runs the same helpers as IVPN's own
+app, [V2Ray](https://github.com/v2fly/v2ray-core) and
+[obfs4proxy](https://gitlab.com/yawning/obfs4), built for Haiku. The window
+starts ivpnd when needed.
 
 ## What it does
 
@@ -14,6 +17,10 @@ Haiku: WireGuard built in (Haiku has no `wg`), and OpenVPN through the
 - Connect or disconnect, with a live status (green / amber / red) and time connected
 - Choose a location from a searchable list with latency, or Fastest / Random
 - Protocol (WireGuard or OpenVPN) and port
+- Obfuscation, for networks that block VPNs: V2Ray (QUIC or TCP) for
+  WireGuard and OpenVPN; obfs3 or obfs4 (with IAT modes) for OpenVPN
+- Firewall (kill switch): nothing leaves outside the VPN, also while it
+  connects or after it drops; or "firewall on connect", only while connected
 - A Deskbar item that shows the connection status (right-click it to
   connect, disconnect or open the app; **Be IVPN → Show in Deskbar** turns
   it on or off)
@@ -24,8 +31,7 @@ Haiku: WireGuard built in (Haiku has no `wg`), and OpenVPN through the
 
 Closing the window does **not** disconnect the VPN; ivpnd keeps running.
 
-Not included yet: firewall (kill switch; Haiku has no packet filter),
-obfuscation, multi-hop, split tunnel, custom DNS, captcha logins and
+Not included yet: multi-hop, split tunnel, custom DNS, captcha logins and
 Enhanced App Authentication.
 
 ## Install (Haiku R1/beta6 or newer, or Renku OS; x86_64)
@@ -50,7 +56,16 @@ package installs on Renku OS, but it is not tested there yet.
 Good to know:
 
 - **IPv4 only**: Haiku's tunnel driver has no IPv6. On a network with IPv6,
-  IPv6 traffic does not go through the VPN.
+  IPv6 traffic does not go through the VPN, unless the firewall is on: it
+  blocks IPv6 too.
+- **How the firewall works:** Haiku has no packet filter, so it works on
+  routes. While it is on, your network's default route stays out of the
+  routing table (ivpnd takes it out again when DHCP puts it back), so
+  traffic can only leave through the VPN. Your local network and IVPN's API
+  (for logging in) stay reachable; other internet access is blocked until
+  you connect. It stays on until you turn it off, also when ivpnd restarts,
+  but after a reboot it comes back only when the app (and so ivpnd) starts.
+  If you remove the app while it is on, restart to get your connection back.
 - While connected, ivpnd points `/boot/system/settings/network/resolv.conf`
   at IVPN's DNS (or AntiTracker) and puts the original back when you
   disconnect.
@@ -70,9 +85,12 @@ Good to know:
 On Haiku R1/beta6 (the package then installs on newer Haiku and Renku OS):
 
 ```sh
-pkgman install gcc haiku_devel curl_devel openssl3_devel
+pkgman install gcc haiku_devel curl_devel openssl3_devel golang git
 sh packaging/haiku/build-hpkg.sh
 ```
+
+This also builds V2Ray and obfs4proxy with HaikuPorts' Go
+(`packaging/haiku/build-helpers.sh`, which patches V2Ray's Haiku gaps).
 
 The result is `be_ivpn-<version>-1-x86_64.hpkg` in this folder.
 
@@ -88,6 +106,8 @@ src/ui/     Haiku API window, location picker, status header
 src/deskbar/ the Deskbar item (BeIVPNDeskbar.so)
 src/ivpnd/  ivpnd, the IVPN service (the same JSON protocol as IVPN's
             official ivpn-service)
+            KillSwitch        the firewall, on routes
+            Proxy             runs V2Ray / obfs4proxy for obfuscation
             DaemonLogic       API answers -> responses, tunnel configs
                               (no Haiku API; tests/daemon_logic_test.cpp)
             Daemon            the background app: clients, workers, tunnels
@@ -109,6 +129,9 @@ third_party/json.hpp   nlohmann/json 3.11.3 (MIT)
 - **[IVPN desktop-app](https://github.com/ivpn/desktop-app)** (GPL v3):
   the protocol, API and OpenVPN settings ivpnd follows, and the OpenVPN CA
   and TLS key in `resources/openvpn/`.
+- **[V2Ray](https://github.com/v2fly/v2ray-core)** (MIT) and
+  **[obfs4proxy](https://gitlab.com/yawning/obfs4)** (BSD 2-clause), built
+  for Haiku and shipped in the package as ivpnd's obfuscation helpers.
 - **[nlohmann/json](https://github.com/nlohmann/json)** (MIT).
 
 License: GPL v3, the same as IVPN's desktop-app. IVPN is a trademark of

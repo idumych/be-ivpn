@@ -35,7 +35,7 @@ jobs:
           cpu_count: 4
           shell: bash
           run: |
-            pkgman install -y gcc haiku_devel curl_devel openssl3_devel
+            pkgman install -y gcc haiku_devel curl_devel openssl3_devel golang git
             sh packaging/haiku/build-hpkg.sh
             package list -i be_ivpn-*.hpkg
       - uses: actions/upload-artifact@v4

@@ -1215,6 +1215,14 @@ OpenVPNBackend::_InstallRoutes(const BString& vpnServerIP)
 		origGatewayIface = fOrigGatewayIface;
 		tunPeer = fTunPeer;
 	}
+	// IVPN: openvpn finds no default gateway while the kill switch holds
+	// it; use the held one (and keep it for the restore).
+	if (origGateway.Length() == 0
+			&& TunDevice::DefaultGateway(origGateway, origGatewayIface)) {
+		BAutolock guard(fScanLock);
+		fOrigGateway = origGateway;
+		fOrigGatewayIface = origGatewayIface;
+	}
 
 	// All three values are needed -- without them we can't even guess at the
 	// right route commands, so refuse rather than do something destructive.
@@ -1233,12 +1241,15 @@ OpenVPNBackend::_InstallRoutes(const BString& vpnServerIP)
 	// 1) Pin the VPN server to the underlying default route so openvpn's
 	// UDP/TCP packets don't try to flow back through the tunnel they're
 	// carrying.
+	// IVPN: not a local proxy's loopback address; ivpnd pins the proxy's
+	// server instead.
 	const char* const serverPin[] = {
 		"route", "add", origGatewayIface.String(), "inet",
 		vpnServerIP.String(), "gw", origGateway.String(),
 		"netmask", "255.255.255.255", NULL
 	};
-	TunDevice::RunRoute(serverPin);
+	if (!TunDevice::IsLoopback(vpnServerIP))
+		TunDevice::RunRoute(serverPin);
 
 	// 2) Drop the existing default route. We originally installed two /1
 	// halves on top of the wifi /0 hoping longest-prefix match would do
@@ -1345,18 +1356,15 @@ OpenVPNBackend::_ApplyRestore(const BString& tunIface, const BString& tunPeer,
 	// 2) Re-add the original default route the user had before we touched
 	// anything. Without this the box has no internet until DHCP renews or
 	// the user manually fixes the route.
-	if (origGateway.Length() > 0 && origGatewayIface.Length() > 0) {
-		const char* const restoreDefault[] = {
-			"route", "add", origGatewayIface.String(), "inet", "0.0.0.0",
-			"gw", origGateway.String(), "netmask", "0.0.0.0", NULL
-		};
-		TunDevice::RunRoute(restoreDefault);
-	}
+	// IVPN: or just remember it while the kill switch holds it.
+	if (origGateway.Length() > 0 && origGatewayIface.Length() > 0)
+		TunDevice::RestoreDefaultRoute(origGateway, origGatewayIface);
 
 	// 3) Drop the server pin -- the dedicated /32 we added so openvpn's
 	// own control traffic could escape the tunnel.
 	if (serverIP.Length() > 0 && origGateway.Length() > 0
-			&& origGatewayIface.Length() > 0) {
+			&& origGatewayIface.Length() > 0
+			&& !TunDevice::IsLoopback(serverIP)) {
 		const char* const dropPin[] = {
 			"route", "delete", origGatewayIface.String(), "inet",
 			serverIP.String(), "gw", origGateway.String(),

@@ -6,9 +6,11 @@
 # Result: be_ivpn-<version>-1-x86_64.hpkg in the project folder.
 # Install with: pkgman install ./be_ivpn-*.hpkg
 #
-# Needs: pkgman install gcc haiku_devel curl_devel openssl3_devel
+# Needs: pkgman install gcc haiku_devel curl_devel openssl3_devel golang git
 # (it says what's missing). Built on beta6, the package also installs on
-# Renku OS and newer Haiku.
+# Renku OS and newer Haiku. The obfuscation helpers (V2Ray, obfs4proxy) come
+# from build/helpers when they are already there (build-helpers.sh), and are
+# built otherwise.
 set -eu
 HERE="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$HERE"
@@ -80,21 +82,29 @@ for pair in "BeIVPN:resources/IVPN.rdef" "ivpnd:resources/ivpnd.rdef"; do
 	mimeset -f "$OBJ/$bin"
 done
 
+say "Obfuscation helpers"
+HELPERS="$HERE/build/helpers"
+if [ ! -x "$HELPERS/v2ray" ] || [ ! -x "$HELPERS/obfs4proxy" ]; then
+	sh packaging/haiku/build-helpers.sh "$HELPERS"
+fi
+
 say "Tests"
 sh tests/run_haiku_tests.sh "$OBJ"
 
 say "Packaging"
 PKG="$OBJ/hpkg"
 DOC="$PKG/documentation/packages/be_ivpn"
-mkdir -p "$PKG/apps/BeIVPN" "$PKG/add-ons/BeIVPN" "$PKG/data/ivpn" \
+mkdir -p "$PKG/apps/BeIVPN/helpers" "$PKG/add-ons/BeIVPN" "$PKG/data/ivpn" \
 	"$PKG/data/deskbar/menu/Applications" "$DOC"
 cp "$OBJ/BeIVPN" "$OBJ/ivpnd" "$PKG/apps/BeIVPN/"
+cp "$HELPERS/v2ray" "$HELPERS/obfs4proxy" "$PKG/apps/BeIVPN/helpers/"
 cp "$OBJ/BeIVPNDeskbar.so" "$PKG/add-ons/BeIVPN/"
 cp resources/openvpn/ca.crt resources/openvpn/ta.key "$PKG/data/ivpn/"
 ln -s ../../../../apps/BeIVPN/BeIVPN \
 	"$PKG/data/deskbar/menu/Applications/Be IVPN"
 cp README.md LICENSE "$DOC/"
 cp third_party/sotoportego/LICENSE "$DOC/LICENSE.sotoportego"
+cp "$HELPERS/LICENSE.v2ray" "$HELPERS/LICENSE.obfs4proxy" "$DOC/"
 
 cat > "$PKG/.PackageInfo" <<EOF
 name			be_ivpn
@@ -102,17 +112,20 @@ version			$VERSION-$REVISION
 architecture	$ARCH
 summary			"Native IVPN client"
 description		"A native window and Deskbar item for the IVPN VPN service, \
-with its own background service (ivpnd) for WireGuard and OpenVPN. \
-Not made by IVPN."
+with its own background service (ivpnd) for WireGuard and OpenVPN, a kill \
+switch, and obfuscation through V2Ray and obfs4proxy. Not made by IVPN."
 packager		"idumych <19998719+idumych@users.noreply.github.com>"
 vendor			"idumych"
 copyrights		{
 	"2026 idumych"
 	"2026 atomozero (Sotoportego tunnel code)"
+	"2015-2022 V2Fly Community (V2Ray)"
+	"2014 Yawning Angel (obfs4proxy)"
 }
 licenses		{
 	"GNU GPL v3"
 	"MIT"
+	"BSD (2-clause)"
 }
 urls			{
 	"https://github.com/idumych/be-ivpn"

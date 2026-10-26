@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <map>
 #include <string>
+#include <vector>
 
 #include "../core/Json.h"
 
@@ -74,6 +75,27 @@ struct ConnectPlan {
 	bool		antiTracker = false;
 	bool		hardcore = false;
 	std::string	dns;				// resolver to use while connected
+
+	// Obfuscation, as ivpn-service does it. V2Ray (VMess over QUIC or TCP)
+	// runs a local proxy the tunnel connects to; obfs3/obfs4 (OpenVPN only)
+	// run obfs4proxy as a SOCKS proxy for openvpn.
+	int			v2ray = 0;			// 0 = off, 1 = QUIC, 2 = TCP
+	std::string	v2rayServer;		// the host's V2Ray (VMess) server
+	int			v2rayPort = 0;		// its port: the chosen port
+	std::string	v2rayTlsName;		// QUIC: TLS server name
+	std::string	v2rayUserId;		// VMess user ID (servers.json)
+	int			v2rayInboundPort = 0;	// the VPN port behind V2Ray (UDP)
+	int			obfsVersion = 0;	// 0 = off, 3 or 4
+	int			obfsIat = 0;		// obfs4 IAT mode, 0..2
+	int			obfsPort = 0;		// the server's obfs3/obfs4 port (TCP)
+	std::string	obfs4Key;			// the host's obfs4 certificate
+
+	bool		UsesV2Ray() const { return v2ray != 0; }
+	bool		UsesObfsproxy() const { return v2ray == 0 && obfsVersion != 0; }
+	// The address the obfuscation proxy connects to outside the tunnel
+	// (empty without obfuscation).
+	std::string	ProxyServer() const
+		{ return UsesV2Ray() ? v2rayServer : UsesObfsproxy() ? hostIp : ""; }
 };
 
 // host IP -> latency in ms
@@ -87,13 +109,40 @@ bool			PlanConnect(const nlohmann::json& params, const Pings& pings,
 					std::string& error);
 
 // wg-quick style configuration for the Sotoportego WireGuard backend. No
-// DNS line: ivpnd sets the resolver itself for both protocols.
-std::string		WireGuardConf(const ConnectPlan& plan, const Session& session);
+// DNS line: ivpnd sets the resolver itself for both protocols. With V2Ray,
+// 'localPort' is the local proxy the endpoint becomes (127.0.0.1).
+std::string		WireGuardConf(const ConnectPlan& plan, const Session& session,
+					int localPort = 0);
 
 // OpenVPN client configuration, CA and TLS-auth key inline. Management,
-// tun device and routing options are added by the OpenVPN backend.
+// tun device and routing options are added by the OpenVPN backend. With
+// V2Ray, 'localPort' is the local proxy; with obfs3/obfs4 it is
+// obfs4proxy's SOCKS port and 'socksAuthFile' holds the obfs4 certificate.
 std::string		OpenVpnConf(const ConnectPlan& plan, const std::string& ca,
-					const std::string& tlsAuth);
+					const std::string& tlsAuth, int localPort = 0,
+					const std::string& socksAuthFile = std::string());
+
+// V2Ray client configuration (as ivpn-service writes it): a local
+// dokodemo-door on 127.0.0.1:'localPort' (UDP) forwarded over VMess.
+nlohmann::json	V2RayConfig(const ConnectPlan& plan, int localPort);
+
+// obfs4proxy's SOCKS credentials for obfs4 ("cert=...;\niat-mode=N"); empty
+// for obfs3.
+std::string		Obfs4AuthFile(const ConnectPlan& plan);
+
+// The SOCKS port from obfs4proxy's managed-transport output line
+// ("CMETHOD obfs4 socks5 127.0.0.1:41234"), or 0.
+int				ObfsproxySocksPort(const std::string& line, int version);
+
+// Default routes in the output of Haiku's `route` command.
+struct DefaultRoute {
+	bool		v6 = false;
+	std::string	gateway;
+	std::string	iface;
+	bool operator==(const DefaultRoute& o) const
+		{ return v6 == o.v6 && gateway == o.gateway && iface == o.iface; }
+};
+std::vector<DefaultRoute> ParseDefaultRoutes(const std::string& routeOutput);
 
 // Protocol responses for the VPN state.
 nlohmann::json	ConnectedResp(const ConnectPlan& plan,

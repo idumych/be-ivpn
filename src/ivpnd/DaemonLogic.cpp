@@ -5,6 +5,8 @@
 #include "DaemonLogic.h"
 
 #include <cctype>
+#include <cstdlib>
+#include <random>
 #include <sstream>
 
 using nlohmann::json;
@@ -65,6 +67,27 @@ std::string
 StripMask(const std::string& cidr)
 {
 	return cidr.substr(0, cidr.find('/'));
+}
+
+
+// A random UDP port from a servers.json port list ([{"type":"UDP",
+// "port":N}, ...]), or 0.
+int
+RandomUdpPort(const json& ports)
+{
+	std::vector<int> udp;
+	if (ports.is_array()) {
+		for (const json& p : ports) {
+			std::string type = Str(p, "type");
+			int port = (int)Int(p, "port");
+			if (port > 0 && (type == "UDP" || type == "udp" || type.empty()))
+				udp.push_back(port);
+		}
+	}
+	if (udp.empty())
+		return 0;
+	std::random_device rd;
+	return udp[std::uniform_int_distribution<size_t>(0, udp.size() - 1)(rd)];
 }
 
 }	// namespace
@@ -260,13 +283,34 @@ PlanConnect(const json& params, const Pings& pings,
 		error = "Invalid port.";
 		return false;
 	}
-	if (plan.vpnType == 1 && plan.tcp) {
-		error = "WireGuard works over UDP only.";
+	plan.v2ray = (int)Int(vpn, "V2RayProxy");
+	if (plan.v2ray < 0 || plan.v2ray > 2) {
+		error = "Unknown V2Ray transport.";
 		return false;
 	}
-	if (Int(vpn, "V2RayProxy") != 0
-		|| Int(Obj(vpn, "Obfs4proxy"), "Version") != 0) {
-		error = "Obfuscation is not available on Haiku yet.";
+	if (plan.v2ray == 0 && plan.vpnType == 0) {
+		const json& obfs = Obj(vpn, "Obfs4proxy");
+		plan.obfsVersion = (int)Int(obfs, "Version");
+		plan.obfsIat = plan.obfsVersion == 4 ? (int)Int(obfs, "Obfs4Iat") : 0;
+		if ((plan.obfsVersion != 0 && plan.obfsVersion != 3
+				&& plan.obfsVersion != 4) || plan.obfsIat < 0
+			|| plan.obfsIat > 2) {
+			error = "Unknown obfsproxy setting.";
+			return false;
+		}
+	}
+	// With V2Ray the chosen port is the V2Ray server's: UDP for QUIC, TCP
+	// for TCP. The tunnel itself runs over UDP behind the local proxy.
+	if (plan.v2ray == 1 && plan.tcp) {
+		error = "V2Ray (QUIC) needs a UDP port.";
+		return false;
+	}
+	if (plan.v2ray == 2 && !plan.tcp) {
+		error = "V2Ray (TCP) needs a TCP port.";
+		return false;
+	}
+	if (plan.vpnType == 1 && plan.tcp && plan.v2ray == 0) {
+		error = "WireGuard works over UDP only.";
 		return false;
 	}
 
@@ -285,6 +329,10 @@ PlanConnect(const json& params, const Pings& pings,
 			continue;
 		if (plan.vpnType == 1 && Str(h, "public_key").empty())
 			continue;
+		if (plan.v2ray != 0 && Str(h, "v2ray").empty())
+			continue;
+		if (plan.obfsVersion == 4 && Str(Obj(h, "obfs"), "obfs4_key").empty())
+			continue;
 		auto p = pings.find(Str(h, "host"));
 		int ping = p != pings.end() && p->second > 0 ? p->second : -1;
 		if (best == nullptr || (ping >= 0 && (bestPing < 0 || ping < bestPing))) {
@@ -293,13 +341,42 @@ PlanConnect(const json& params, const Pings& pings,
 		}
 	}
 	if (best == nullptr) {
-		error = "The chosen location has no usable servers.";
+		error = plan.v2ray != 0 || plan.obfsVersion != 0
+			? "The chosen location has no servers for this obfuscation."
+			: "The chosen location has no usable servers.";
 		return false;
 	}
 	plan.hostIp = Str(*best, "host");
 	plan.hostname = Str(*best, "hostname");
 	plan.publicKey = Str(*best, "public_key");
 	plan.hostLocalIp = StripMask(Str(*best, "local_ip"));
+
+	const json& ports = Obj(serversConfig, "ports");
+	if (plan.v2ray != 0) {
+		const json& v2 = Obj(ports, "v2ray");
+		plan.v2rayServer = Str(*best, "v2ray");
+		plan.v2rayPort = plan.port;
+		plan.v2rayUserId = Str(v2, "id");
+		auto list = v2.find(plan.vpnType == 1 ? "wireguard" : "openvpn");
+		plan.v2rayInboundPort = list != v2.end() ? RandomUdpPort(*list) : 0;
+		// ivpn-service: the host's DNS name under IVPN's other domain
+		std::string dnsName = Str(*best, "dns_name");
+		size_t at = dnsName.find("ivpn.net");
+		if (at != std::string::npos)
+			dnsName.replace(at, 8, "inet-telecom.com");
+		plan.v2rayTlsName = dnsName;
+		if (plan.v2rayUserId.empty() || plan.v2rayInboundPort == 0
+			|| (plan.v2ray == 1 && plan.v2rayTlsName.empty())) {
+			error = "The server list has no V2Ray settings. Update it and "
+				"try again.";
+			return false;
+		}
+	} else if (plan.obfsVersion != 0) {
+		plan.obfsPort = (int)Int(Obj(ports,
+			plan.obfsVersion == 4 ? "obfs4" : "obfs3"), "port",
+			plan.obfsVersion == 4 ? 5146 : 5145);
+		plan.obfs4Key = Str(Obj(*best, "obfs"), "obfs4_key");
+	}
 
 	const json& at = Obj(Obj(params, "Metadata"), "AntiTracker");
 	plan.antiTracker = Bool(at, "Enabled");
@@ -321,15 +398,22 @@ PlanConnect(const json& params, const Pings& pings,
 
 
 std::string
-WireGuardConf(const ConnectPlan& plan, const Session& session)
+WireGuardConf(const ConnectPlan& plan, const Session& session, int localPort)
 {
 	std::ostringstream out;
 	out << "[Interface]\n"
 		<< "PrivateKey = " << session.wgPrivateKey << "\n"
-		<< "Address = " << StripMask(session.wgLocalIp) << "/32\n"
-		<< "\n[Peer]\n"
-		<< "PublicKey = " << plan.publicKey << "\n"
-		<< "Endpoint = " << plan.hostIp << ":" << plan.port << "\n"
+		<< "Address = " << StripMask(session.wgLocalIp) << "/32\n";
+	// Room for V2Ray's own headers inside the carrier's 1500 bytes
+	if (localPort > 0)
+		out << "MTU = 1280\n";
+	out << "\n[Peer]\n"
+		<< "PublicKey = " << plan.publicKey << "\n";
+	if (localPort > 0)
+		out << "Endpoint = 127.0.0.1:" << localPort << "\n";
+	else
+		out << "Endpoint = " << plan.hostIp << ":" << plan.port << "\n";
+	out
 		<< "AllowedIPs = 0.0.0.0/0\n"
 		<< "PersistentKeepalive = 25\n";
 	return out.str();
@@ -338,16 +422,31 @@ WireGuardConf(const ConnectPlan& plan, const Session& session)
 
 std::string
 OpenVpnConf(const ConnectPlan& plan, const std::string& ca,
-	const std::string& tlsAuth)
+	const std::string& tlsAuth, int localPort,
+	const std::string& socksAuthFile)
 {
 	// Same options as ivpn-service (daemon/vpn/openvpn/config.go). Haiku's
 	// tun driver has no IPv6, so pushed IPv6 settings are dropped.
 	std::ostringstream out;
 	out << "client\n"
-		<< "dev tun\n"
-		<< "proto " << (plan.tcp ? "tcp-client" : "udp") << "\n"
-		<< "remote " << plan.hostIp << " " << plan.port << "\n"
-		<< "resolv-retry infinite\n"
+		<< "dev tun\n";
+	if (plan.UsesV2Ray() && localPort > 0) {
+		// the local V2Ray proxy forwards UDP to the server's V2Ray port
+		out << "proto udp\n"
+			<< "remote 127.0.0.1 " << localPort << "\n";
+	} else if (plan.UsesObfsproxy() && localPort > 0) {
+		// openvpn asks obfs4proxy (SOCKS) for the server's obfs port
+		out << "proto tcp-client\n"
+			<< "remote " << plan.hostIp << " " << plan.obfsPort << "\n"
+			<< "socks-proxy 127.0.0.1 " << localPort;
+		if (!socksAuthFile.empty())
+			out << " \"" << socksAuthFile << "\"";
+		out << "\n";
+	} else {
+		out << "proto " << (plan.tcp ? "tcp-client" : "udp") << "\n"
+			<< "remote " << plan.hostIp << " " << plan.port << "\n";
+	}
+	out << "resolv-retry infinite\n"
 		<< "nobind\n"
 		<< "persist-key\n"
 		<< "auth-user-pass\n"
@@ -390,9 +489,141 @@ ConnectedResp(const ConnectPlan& plan, const std::string& clientIp,
 		{"PausedTill", ""},
 		{"VpnType", plan.vpnType},
 		{"ExitHostname", ""},
-		{"V2RayProxy", 0},
-		{"Obfsproxy", {{"Version", 0}, {"Obfs4Iat", 0}}},
+		{"V2RayProxy", plan.v2ray},
+		{"Obfsproxy", {{"Version", plan.UsesObfsproxy() ? plan.obfsVersion : 0},
+			{"Obfs4Iat", plan.UsesObfsproxy() ? plan.obfsIat : 0}}},
 	};
+}
+
+
+json
+V2RayConfig(const ConnectPlan& plan, int localPort)
+{
+	json stream;
+	if (plan.v2ray == 1) {
+		stream = {
+			{"network", "quic"},
+			{"security", "tls"},
+			{"quicSettings", {{"security", ""}, {"key", ""},
+				{"header", {{"type", "srtp"}}}}},
+			{"tlsSettings", {{"serverName", plan.v2rayTlsName}}},
+		};
+	} else {
+		stream = {
+			{"network", "tcp"},
+			{"tcpSettings", {{"header", {
+				{"type", "http"},
+				{"request", {
+					{"version", "1.1"},
+					{"method", "GET"},
+					{"path", {"/"}},
+					{"headers", {
+						{"Host", {"www.inet-telecom.com"}},
+						{"User-Agent", {
+							"Mozilla/5.0 (Windows NT 10.0; WOW64) "
+							"AppleWebKit/537.36 (KHTML, like Gecko) "
+							"Chrome/55.0.2883.75 Safari/537.36",
+							"Mozilla/5.0 (iPhone; CPU iPhone OS 10_0_2 like Mac "
+							"OS X) AppleWebKit/601.1 (KHTML, like Gecko) "
+							"CriOS/53.0.2785.109 Mobile/14A456 Safari/601.1.46"}},
+						{"Accept-Encoding", {"gzip, deflate"}},
+						{"Connection", {"keep-alive"}},
+						{"Pragma", "no-cache"},
+					}},
+				}},
+			}}}},
+		};
+	}
+	return {
+		{"log", {{"loglevel", "warning"}}},
+		{"inbounds", {{
+			{"port", std::to_string(localPort)},
+			{"listen", "127.0.0.1"},
+			{"protocol", "dokodemo-door"},
+			{"settings", {{"address", plan.hostIp},
+				{"port", plan.v2rayInboundPort}, {"network", "udp"}}},
+		}}},
+		{"outbounds", {{
+			{"tag", "proxy"},
+			{"protocol", "vmess"},
+			{"settings", {{"vnext", {{
+				{"address", plan.v2rayServer},
+				{"port", plan.v2rayPort},
+				{"users", {{{"id", plan.v2rayUserId}, {"alterId", 0},
+					{"security", "none"}}}},
+			}}}}},
+			{"streamSettings", stream},
+		}}},
+	};
+}
+
+
+std::string
+Obfs4AuthFile(const ConnectPlan& plan)
+{
+	if (!plan.UsesObfsproxy() || plan.obfsVersion != 4)
+		return std::string();
+	return "cert=" + plan.obfs4Key + ";\niat-mode="
+		+ std::to_string(plan.obfsIat);
+}
+
+
+int
+ObfsproxySocksPort(const std::string& line, int version)
+{
+	std::string method = "CMETHOD obfs" + std::to_string(version) + " ";
+	if (line.rfind(method, 0) != 0)
+		return 0;
+	size_t colon = line.rfind(':');
+	if (colon == std::string::npos)
+		return 0;
+	int port = atoi(line.c_str() + colon + 1);
+	return port > 0 && port <= 65535 ? port : 0;
+}
+
+
+std::vector<DefaultRoute>
+ParseDefaultRoutes(const std::string& output)
+{
+	// Haiku's `route` prints one table per family:
+	//   IPv4 routing table:
+	//   Destination Netmask Gateway Flags Interface
+	//       0.0.0.0 0.0.0.0 10.0.2.2 D----- /dev/net/ipro1000/0
+	//   IPv6 routing table:
+	//   Destination     Gateway Flags Interface
+	//          ::/0     fe80::1 D----- /dev/net/ipro1000/0
+	std::vector<DefaultRoute> routes;
+	std::istringstream in(output);
+	std::string line;
+	bool v6 = false;
+	while (std::getline(in, line)) {
+		if (line.find("IPv4 routing table") != std::string::npos) {
+			v6 = false;
+			continue;
+		}
+		if (line.find("IPv6 routing table") != std::string::npos) {
+			v6 = true;
+			continue;
+		}
+		std::istringstream fields(line);
+		std::vector<std::string> t;
+		std::string f;
+		while (fields >> f)
+			t.push_back(f);
+		DefaultRoute r;
+		r.v6 = v6;
+		if (!v6 && t.size() >= 5 && t[0] == "0.0.0.0" && t[1] == "0.0.0.0"
+			&& t[2] != "-" && t[2] != "0.0.0.0") {
+			r.gateway = t[2];
+		} else if (v6 && t.size() >= 4 && t[0] == "::/0"
+			&& t[1] != "-") {
+			r.gateway = t[1];
+		} else
+			continue;
+		r.iface = t.back();
+		routes.push_back(r);
+	}
+	return routes;
 }
 
 

@@ -814,8 +814,10 @@ WireGuardBackend::_InstallRoutes()
 	}
 
 	// 1) Pin the endpoint to the carrier so our encrypted UDP doesn't try to
-	// flow back through the tunnel it carries.
-	if (fEndpointIP.Length() > 0 && fOrigGateway.Length() > 0) {
+	// flow back through the tunnel it carries. IVPN: not a local proxy's
+	// loopback endpoint; ivpnd pins the proxy's server instead.
+	if (fEndpointIP.Length() > 0 && fOrigGateway.Length() > 0
+			&& !TunDevice::IsLoopback(fEndpointIP)) {
 		const char* const pin[] = {
 			"route", "add", fOrigGatewayIface.String(), "inet",
 			fEndpointIP.String(), "gw", fOrigGateway.String(),
@@ -875,14 +877,10 @@ WireGuardBackend::_RemoveRoutes()
 		TunDevice::RunRoute(del);
 	}
 
-	if (fReplacedDefault && fOrigGateway.Length() > 0) {
-		const char* const restore[] = {
-			"route", "add", fOrigGatewayIface.String(), "inet", "0.0.0.0",
-			"gw", fOrigGateway.String(), "netmask", "0.0.0.0", NULL
-		};
-		TunDevice::RunRoute(restore);
-	}
-	if (fEndpointIP.Length() > 0 && fOrigGateway.Length() > 0) {
+	if (fReplacedDefault && fOrigGateway.Length() > 0)
+		TunDevice::RestoreDefaultRoute(fOrigGateway, fOrigGatewayIface);	// IVPN
+	if (fEndpointIP.Length() > 0 && fOrigGateway.Length() > 0
+			&& !TunDevice::IsLoopback(fEndpointIP)) {
 		const char* const unpin[] = {
 			"route", "delete", fOrigGatewayIface.String(), "inet",
 			fEndpointIP.String(), "gw", fOrigGateway.String(),

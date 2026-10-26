@@ -58,7 +58,8 @@ public:
 			IVPN_APP_NAME " " IVPN_APP_VERSION "\n\n"
 			"Native IVPN client for Haiku.\n"
 			"Its service, ivpnd, keeps the VPN running; the tunnels use code "
-			"from Sotoportego (MIT).\n\n"
+			"from Sotoportego (MIT), and obfuscation uses V2Ray (MIT) and "
+			"obfs4proxy (BSD).\n\n"
 			"Closing this window does not disconnect the VPN.\n\n"
 			"GNU GPL v3. IVPN is a trademark of Privatus Limited; this app is "
 			"not made by IVPN.",

@@ -31,6 +31,7 @@
 #include "Dns.h"
 #include "IvpnApi.h"
 #include "Pinger.h"
+#include "Proxy.h"
 
 #include "../../third_party/sotoportego/OpenVPNBackend.h"
 #include "../../third_party/sotoportego/VPNProfile.h"
@@ -49,9 +50,12 @@ enum {
 	kMsgWorkDone		= 'iWrk',	// "kind", "client", "idx", "result"
 	kMsgDnsCheck		= 'iDns',
 	kMsgRefreshServers	= 'iRfs',
+	kMsgKillSwitchCheck	= 'iKsw',
+	kMsgProxyExited		= 'iPrx',
 };
 
 const bigtime_t kDnsCheckInterval = 5000000;
+const bigtime_t kKillSwitchCheckInterval = 3000000;
 const bigtime_t kServersRefreshInterval = 6LL * 3600 * 1000000;
 
 struct Client {
@@ -191,7 +195,10 @@ Daemon::Daemon()
 	fFailureSent(false),
 	fConnectedSince(0),
 	fPending(),
-	fDnsCheck(NULL)
+	fDnsCheck(NULL),
+	fKillSwitch(_DataPath("firewall.json")),
+	fFirewallByConnect(false),
+	fKillSwitchCheck(NULL)
 {
 }
 
@@ -199,7 +206,11 @@ Daemon::Daemon()
 Daemon::~Daemon()
 {
 	delete fDnsCheck;
-	// The backends' destructors tear down a live tunnel and its routes.
+	delete fKillSwitchCheck;
+	if (fProxy)
+		fProxy->Stop();
+	// The backends' destructors tear down a live tunnel and its routes (a
+	// kill switch that is on stays on: firewall.json brings it back).
 	if (fOpenVpn != NULL) {
 		RemoveHandler(fOpenVpn);
 		delete fOpenVpn;
@@ -223,6 +234,16 @@ Daemon::ReadyToRun()
 	// A previous run may have died with the tunnel up.
 	dns::Restore();
 
+	// Before the backends' crash recovery, which puts the carrier default
+	// back: with the kill switch on, it must stay held.
+	_LoadState();
+	_UpdateApiHosts();
+	fKillSwitch.Load();
+	_UpdateApiHosts();
+	BMessage check(kMsgKillSwitchCheck);
+	fKillSwitchCheck = new BMessageRunner(BMessenger(this), &check,
+		kKillSwitchCheckInterval);
+
 	fOpenVpn = new OpenVPNBackend();
 	fWireGuard = new WireGuardBackend();
 	AddHandler(fOpenVpn);
@@ -231,8 +252,6 @@ Daemon::ReadyToRun()
 	fWireGuard->SetObserver(BMessenger(this));
 	fOpenVpn->RecoverIfCrashed();
 	fWireGuard->RecoverIfCrashed();
-
-	_LoadState();
 
 	if (!_StartListening()) {
 		fprintf(stderr, "ivpnd: cannot listen, quitting\n");
@@ -291,6 +310,22 @@ Daemon::MessageReceived(BMessage* message)
 
 		case kMsgRefreshServers:
 			_FetchServers(0, 0);
+			break;
+
+		case kMsgKillSwitchCheck:
+			fKillSwitch.Check();
+			break;
+
+		case kMsgProxyExited:
+			// The helper died under a live tunnel: nothing gets through.
+			if (fPhase == kTunnel && fActive != NULL && !fUserStop) {
+				if (!fFailureSent) {
+					fFailureSent = true;
+					_Broadcast(DisconnectedResp(true, "The obfuscation proxy "
+						"stopped."));
+				}
+				fActive->Disconnect();
+			}
 			break;
 
 		default:
@@ -563,6 +598,8 @@ Daemon::_HandleRequest(Client& client, const json& request)
 	} else if (command == "SessionDelete") {
 		if (fPhase != kIdle)
 			_Disconnect();
+		if (Bool(request, "NeedToDisableFirewall") && fKillSwitch.IsEnabled())
+			_SetKillSwitch(false);
 		std::string token = fSession.token;
 		_ForgetSession();
 		_Send(id, {{"Command", "EmptyResp"}}, idx);
@@ -575,15 +612,11 @@ Daemon::_HandleRequest(Client& client, const json& request)
 			});
 		}
 	} else if (command == "KillSwitchGetStatus") {
-		_Send(id, {{"Command", "KillSwitchStatusResp"}, {"IsEnabled", false},
-			{"IsPersistent", false}, {"IsAllowLAN", false},
-			{"IsAllowMulticast", false}, {"IsAllowApiServers", true}}, idx);
+		_Send(id, _KillSwitchResp(), idx);
 	} else if (command == "KillSwitchSetEnabled") {
-		if (Bool(request, "IsEnabled"))
-			_Send(id, {{"Command", "ErrorResp"}, {"ErrorMessage",
-				"The firewall is not available on Haiku."}}, idx);
-		else
-			_Send(id, {{"Command", "EmptyResp"}}, idx);
+		fFirewallByConnect = false;
+		_SetKillSwitch(Bool(request, "IsEnabled"));
+		_Send(id, {{"Command", "EmptyResp"}}, idx);
 	} else if (command == "Connect") {
 		_Send(id, {{"Command", "EmptyResp"}}, idx);
 		const json empty = json::object();
@@ -603,7 +636,8 @@ Daemon::_HandleRequest(Client& client, const json& request)
 json
 Daemon::_HelloResp() const
 {
-	const char* noHelper = "Not available on Haiku yet";
+	std::string v2ray = HelperPath("v2ray");
+	std::string obfsproxy = HelperPath("obfs4proxy");
 	return {
 		{"Command", "HelloResp"},
 		{"Version", IVPND_VERSION " (Haiku)"},
@@ -615,12 +649,58 @@ Daemon::_HelloResp() const
 		{"DisabledFunctions", {
 			{"WireGuardError", ""},
 			{"OpenVPNError", ""},
-			{"ObfsproxyError", noHelper},
-			{"V2RayError", noHelper},
-			{"SplitTunnelError", noHelper},
-			{"FirewallError", "Haiku has no packet filter"},
+			{"ObfsproxyError", access(obfsproxy.c_str(), X_OK) == 0 ? ""
+				: "obfs4proxy is not installed (" + obfsproxy + ")"},
+			{"V2RayError", access(v2ray.c_str(), X_OK) == 0 ? ""
+				: "V2Ray is not installed (" + v2ray + ")"},
+			{"SplitTunnelError", "Not available on Haiku yet"},
+			{"FirewallError", ""},
 		}},
 	};
+}
+
+
+json
+Daemon::_KillSwitchResp() const
+{
+	// Works on routes: the local network stays reachable (on-link), and so
+	// does IVPN's API.
+	return {{"Command", "KillSwitchStatusResp"},
+		{"IsEnabled", fKillSwitch.IsEnabled()}, {"IsPersistent", false},
+		{"IsAllowLAN", true}, {"IsAllowMulticast", true},
+		{"IsAllowApiServers", true}};
+}
+
+
+void
+Daemon::_SetKillSwitch(bool enabled)
+{
+	if (enabled)
+		fKillSwitch.Enable();
+	else
+		fKillSwitch.Disable(fPhase == kTunnel);
+	_UpdateApiHosts();
+	_Broadcast(_KillSwitchResp());
+}
+
+
+// IVPN's API addresses from servers.json: pinned to the carrier and used
+// instead of DNS while the kill switch is on.
+void
+Daemon::_UpdateApiHosts()
+{
+	std::vector<std::string> ips;
+	if (fServers.is_object() && fServers.contains("config")) {
+		const json& list = fServers["config"].value("api", json::object())
+			.value("ips", json::array());
+		for (const json& ip : list) {
+			if (ip.is_string())
+				ips.push_back(ip.get<std::string>());
+		}
+	}
+	fKillSwitch.SetApiHosts(ips);
+	api::SetApiAddresses(fKillSwitch.IsEnabled() ? ips
+		: std::vector<std::string>());
 }
 
 
@@ -686,6 +766,7 @@ Daemon::_WorkDone(BMessage* message)
 		if (servers.is_object() && servers.contains("wireguard")) {
 			fServers = servers;
 			WritePrivateFile(_DataPath("servers.json"), fServers.dump());
+			_UpdateApiHosts();
 			// Everyone gets the fresh list (the window may have started
 			// before there was any).
 			_Broadcast({{"Command", "ServerListResp"},
@@ -809,7 +890,22 @@ Daemon::_WorkDone(BMessage* message)
 				+ (why.empty() ? std::string(".") : ": " + why)));
 			return;
 		}
-		_StartTunnel();
+		_PrepareTunnel();
+	} else if (kind == "proxy") {
+		// Connect step 2 with obfuscation: the helper is running
+		if (fPhase != kPreparing)
+			return;
+		int port = (int)Int(result, "port");
+		if (fUserStop || !fPending.is_null()) {
+			_TunnelDown(false, "");
+			return;
+		}
+		if (port <= 0) {
+			_TunnelDown(true, error.empty()
+				? "Could not start the obfuscation proxy." : error);
+			return;
+		}
+		_StartTunnel(port);
 	}
 }
 
@@ -883,6 +979,12 @@ Daemon::_Connect(const json& params)
 	fFailureSent = false;
 	_Broadcast(VpnStateResp(1));
 
+	// "Firewall on connect": on now, off again after a disconnect
+	if (Bool(params, "FirewallOn") && !fKillSwitch.IsEnabled()) {
+		fFirewallByConnect = true;
+		_SetKillSwitch(true);
+	}
+
 	bool needKey = fSession.wgPrivateKey.empty() || fSession.wgLocalIp.empty()
 		|| time(NULL) - fSession.wgKeyGenerated > kWgKeyRotationSeconds;
 	if (plan.vpnType == 1 && needKey) {
@@ -899,25 +1001,90 @@ Daemon::_Connect(const json& params)
 		});
 		return;
 	}
-	_StartTunnel();
+	_PrepareTunnel();
+}
+
+
+// Pins what the tunnel talks to outside of it, and starts the obfuscation
+// proxy when there is one (on a worker: it takes a few seconds).
+void
+Daemon::_PrepareTunnel()
+{
+	// The proxy's server always needs the carrier (the tunnel's default
+	// route would swallow it); the VPN server itself needs it before the
+	// backend pins it only while the kill switch holds the default route.
+	std::string outside = fPlan.ProxyServer();
+	if (outside.empty() && fKillSwitch.IsEnabled())
+		outside = fPlan.hostIp;
+	std::string via;
+	if (!outside.empty() && PinToCarrier(outside, via))
+		fConnPins.push_back(std::make_pair(outside, via));
+
+	if (fPlan.ProxyServer().empty()) {
+		_StartTunnel(0);
+		return;
+	}
+
+	fPhase = kPreparing;
+	std::shared_ptr<ProxyProcess> proxy = std::make_shared<ProxyProcess>();
+	fProxy = proxy;
+	BMessenger self(this);
+	std::function<void()> onExit = [self]() {
+		BMessage msg(kMsgProxyExited);
+		self.SendMessage(&msg);
+	};
+	if (fPlan.UsesV2Ray()) {
+		int localPort = FreeUdpPort();
+		std::string config = _DataPath("v2ray.json");
+		if (localPort <= 0 || !WritePrivateFile(config,
+				V2RayConfig(fPlan, localPort).dump(1, '\t'))) {
+			_TunnelDown(true, "Could not prepare V2Ray.");
+			return;
+		}
+		_RunWorker("proxy", 0, 0, [proxy, config, localPort, onExit]() {
+			std::string error;
+			bool ok = proxy->StartV2Ray(config, onExit, error);
+			return json{{"port", ok ? localPort : 0}, {"error", error}};
+		});
+	} else {
+		int version = fPlan.obfsVersion;
+		std::string stateDir = _DataPath("obfs4proxy");
+		create_directory(stateDir.c_str(), 0700);
+		_RunWorker("proxy", 0, 0, [proxy, version, stateDir, onExit]() {
+			std::string error;
+			int port = proxy->StartObfsproxy(version, stateDir, onExit, error);
+			return json{{"port", port}, {"error", error}};
+		});
+	}
 }
 
 
 void
-Daemon::_StartTunnel()
+Daemon::_StartTunnel(int localPort)
 {
 	VPNProfile profile;
 	profile.fName = "IVPN";
-	profile.fServer = fPlan.hostIp.c_str();
-	profile.fPort = (uint16)fPlan.port;
-	profile.fProtocol = fPlan.tcp ? "tcp" : "udp";
+	if (fPlan.UsesV2Ray()) {
+		profile.fServer = "127.0.0.1";
+		profile.fPort = (uint16)localPort;
+		profile.fProtocol = "udp";
+	} else if (fPlan.UsesObfsproxy()) {
+		profile.fServer = fPlan.hostIp.c_str();
+		profile.fPort = (uint16)fPlan.obfsPort;
+		profile.fProtocol = "tcp";
+	} else {
+		profile.fServer = fPlan.hostIp.c_str();
+		profile.fPort = (uint16)fPlan.port;
+		profile.fProtocol = fPlan.tcp ? "tcp" : "udp";
+	}
 
 	std::string path;
 	std::string content;
 	if (fPlan.vpnType == 1) {
 		profile.fBackendType = VPN_BACKEND_WIREGUARD;
 		path = _DataPath("wg.conf");
-		content = WireGuardConf(fPlan, fSession);
+		content = WireGuardConf(fPlan, fSession,
+			fPlan.UsesV2Ray() ? localPort : 0);
 		fActive = fWireGuard;
 	} else {
 		profile.fBackendType = VPN_BACKEND_OPENVPN;
@@ -930,25 +1097,36 @@ Daemon::_StartTunnel()
 		std::string ca = ReadFile(dir + "/ca.crt");
 		std::string ta = ReadFile(dir + "/ta.key");
 		if (ca.empty() || ta.empty()) {
-			_Broadcast(DisconnectedResp(true, "IVPN's OpenVPN certificate "
-				"is missing (" + dir + "/ca.crt). Reinstall the app."));
+			_TunnelDown(true, "IVPN's OpenVPN certificate is missing ("
+				+ dir + "/ca.crt). Reinstall the app.");
 			return;
 		}
-		content = OpenVpnConf(fPlan, ca, ta);
+		std::string authFile;
+		std::string auth = Obfs4AuthFile(fPlan);
+		if (!auth.empty()) {
+			authFile = _DataPath("obfs4.auth");
+			if (!WritePrivateFile(authFile, auth)) {
+				_TunnelDown(true, "Could not write " + authFile);
+				return;
+			}
+		}
+		content = OpenVpnConf(fPlan, ca, ta, localPort, authFile);
 		fActive = fOpenVpn;
 		fOpenVpn->SetCredentials(fSession.vpnUsername.c_str(),
 			fSession.vpnPassword.c_str());
 	}
 	if (!WritePrivateFile(path, content)) {
 		fActive = NULL;
-		_Broadcast(DisconnectedResp(true, "Could not write " + path));
+		_TunnelDown(true, "Could not write " + path);
 		return;
 	}
 	profile.fConfigPath = path.c_str();
 
 	fPhase = kTunnel;
-	printf("ivpnd: connecting to %s (%s) port %d/%s\n", fPlan.hostname.c_str(),
-		fPlan.hostIp.c_str(), fPlan.port, fPlan.tcp ? "tcp" : "udp");
+	printf("ivpnd: connecting to %s (%s) port %d/%s%s\n",
+		fPlan.hostname.c_str(), fPlan.hostIp.c_str(), fPlan.port,
+		fPlan.tcp ? "tcp" : "udp", fPlan.UsesV2Ray() ? " over V2Ray"
+			: fPlan.UsesObfsproxy() ? " over obfsproxy" : "");
 	status_t status = fActive->Connect(profile);
 	if (fPlan.vpnType == 1)
 		unlink(path.c_str());	// read at Connect(); it holds the private key
@@ -1055,6 +1233,20 @@ Daemon::_TunnelDown(bool failure, const std::string& reason)
 	fDnsCheck = NULL;
 	dns::Restore();
 	_RemoveConfigFiles();
+	if (fProxy) {
+		fProxy->Stop();
+		fProxy.reset();
+	}
+	for (const auto& pin : fConnPins)
+		UnpinFromCarrier(pin.first, pin.second);
+	fConnPins.clear();
+
+	if (fUserStop && fPending.is_null() && fFirewallByConnect) {
+		fFirewallByConnect = false;
+		_SetKillSwitch(false);
+	}
+	// The carrier's gateway is known again: pin the API
+	fKillSwitch.Check();
 
 	if (!fPending.is_null()) {
 		json params = fPending;
@@ -1076,6 +1268,8 @@ Daemon::_RemoveConfigFiles()
 {
 	unlink(_DataPath("wg.conf").c_str());
 	unlink(_DataPath("ivpn.ovpn").c_str());
+	unlink(_DataPath("v2ray.json").c_str());
+	unlink(_DataPath("obfs4.auth").c_str());
 }
 
 

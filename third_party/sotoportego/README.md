@@ -21,3 +21,11 @@ listed here:
   process, thread or tun slot left).
 - `WireGuardBackend.cpp`: resolv.conf backup named `resolv.conf.ivpn-wg`
   (unused: `ivpnd` sets DNS itself and gives the backend no `DNS =` line).
+- `TunDevice.cpp/.h`: a held default route for the kill switch
+  (`SetDefaultRouteHeld()`, `RestoreDefaultRoute()`); `DefaultGateway()`
+  skips tun defaults and falls back to the held gateway. Both backends put
+  the carrier default back through `RestoreDefaultRoute()`.
+- `OpenVPNBackend.cpp`: uses `TunDevice::DefaultGateway()` when openvpn
+  reports no `ROUTE_GATEWAY` (none exists while the kill switch holds it).
+- `OpenVPNBackend.cpp`, `WireGuardBackend.cpp`: never pin a loopback
+  endpoint (a tunnel through a local V2Ray or obfs4 proxy) to the gateway.

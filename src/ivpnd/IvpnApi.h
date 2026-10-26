@@ -10,11 +10,16 @@
 #define IVPND_IVPN_API_H
 
 #include <string>
+#include <vector>
 
 #include "../core/Json.h"
 
 namespace ivpnd {
 namespace api {
+
+// Connect to these addresses of api.ivpn.net instead of looking it up
+// (the kill switch blocks DNS outside the tunnel). Empty: use DNS.
+void			SetApiAddresses(const std::vector<std::string>& ips);
 
 // Each returns the parsed JSON body, or null json when the server could not
 // be reached or did not answer with JSON ('error' says why).

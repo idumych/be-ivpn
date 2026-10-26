@@ -5,6 +5,7 @@
 #include "TunDevice.h"
 
 #include <fcntl.h>
+#include <mutex>
 #include <spawn.h>
 #include <stdio.h>
 #include <string.h>
@@ -13,6 +14,13 @@
 
 
 extern "C" char** environ;
+
+
+// IVPN: the held default route (kill switch)
+static std::mutex sHeldLock;
+static bool sHeld = false;
+static BString sHeldGateway;
+static BString sHeldIface;
 
 
 bool
@@ -160,6 +168,9 @@ TunDevice::DefaultGateway(BString& gateway, BString& iface)
 		}
 		if (count < 3 || tokens[0] != "0.0.0.0" || tokens[1] != "0.0.0.0")
 			continue;
+		// IVPN: a tunnel's own default is not the carrier
+		if (tokens[count - 1].StartsWith("tun/"))
+			continue;
 
 		for (int i = 2; i < count - 1; i++) {
 			if (looks_like_ipv4(tokens[i]) && tokens[i] != "0.0.0.0") {
@@ -171,5 +182,74 @@ TunDevice::DefaultGateway(BString& gateway, BString& iface)
 		}
 	}
 	pclose(fp);
+	if (!found)
+		found = HeldGateway(gateway, iface);
 	return found;
+}
+
+
+void
+TunDevice::SetDefaultRouteHeld(bool held)
+{
+	std::lock_guard<std::mutex> lock(sHeldLock);
+	sHeld = held;
+}
+
+
+bool
+TunDevice::DefaultRouteHeld()
+{
+	std::lock_guard<std::mutex> lock(sHeldLock);
+	return sHeld;
+}
+
+
+void
+TunDevice::SetHeldGateway(const BString& gateway, const BString& iface)
+{
+	std::lock_guard<std::mutex> lock(sHeldLock);
+	sHeldGateway = gateway;
+	sHeldIface = iface;
+}
+
+
+bool
+TunDevice::HeldGateway(BString& gateway, BString& iface)
+{
+	std::lock_guard<std::mutex> lock(sHeldLock);
+	if (sHeldGateway.Length() == 0 || sHeldIface.Length() == 0)
+		return false;
+	gateway = sHeldGateway;
+	iface = sHeldIface;
+	return true;
+}
+
+
+bool
+TunDevice::RestoreDefaultRoute(const BString& gateway, const BString& iface)
+{
+	if (gateway.Length() == 0 || iface.Length() == 0)
+		return false;
+	{
+		std::lock_guard<std::mutex> lock(sHeldLock);
+		if (sHeld) {
+			sHeldGateway = gateway;
+			sHeldIface = iface;
+			printf("[route] default via %s %s held (kill switch)\n",
+				iface.String(), gateway.String());
+			return true;
+		}
+	}
+	const char* const add[] = {
+		"route", "add", iface.String(), "inet", "0.0.0.0",
+		"gw", gateway.String(), "netmask", "0.0.0.0", NULL
+	};
+	return RunRoute(add);
+}
+
+
+bool
+TunDevice::IsLoopback(const BString& ip)
+{
+	return ip.StartsWith("127.");
 }

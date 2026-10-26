@@ -25,6 +25,10 @@ const char* kApiPins = "sha256//g6WEFnt9DyTi70nW/fufsZNw83vFpcmIhMuDPQ1MFcI=;"
 	"sha256//47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=";
 
 
+std::mutex sAddressLock;
+std::string sResolve;	// CURLOPT_RESOLVE entry, empty for DNS
+
+
 size_t
 Collect(char* data, size_t size, size_t count, void* user)
 {
@@ -73,12 +77,21 @@ Request(const char* method, const std::string& path, const json* payload,
 		curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)sent.size());
 	}
 	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, method);
+	struct curl_slist* resolve = nullptr;
+	{
+		std::lock_guard<std::mutex> lock(sAddressLock);
+		if (!sResolve.empty())
+			resolve = curl_slist_append(nullptr, sResolve.c_str());
+	}
+	if (resolve != nullptr)
+		curl_easy_setopt(curl, CURLOPT_RESOLVE, resolve);
 
 	CURLcode code = curl_easy_perform(curl);
 	long httpStatus = 0;
 	curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &httpStatus);
-	curl_slist_free_all(headers);
 	curl_easy_cleanup(curl);
+	curl_slist_free_all(headers);
+	curl_slist_free_all(resolve);
 
 	if (code != CURLE_OK) {
 		error = code == CURLE_SSL_PINNEDPUBKEYNOTMATCH
@@ -101,6 +114,17 @@ Request(const char* method, const std::string& path, const json* payload,
 }
 
 }	// namespace
+
+
+void
+SetApiAddresses(const std::vector<std::string>& ips)
+{
+	std::string entry;
+	for (const std::string& ip : ips)
+		entry += (entry.empty() ? "api.ivpn.net:443:" : ",") + ip;
+	std::lock_guard<std::mutex> lock(sAddressLock);
+	sResolve = entry;
+}
 
 
 json

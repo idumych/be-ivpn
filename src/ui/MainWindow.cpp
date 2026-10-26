@@ -118,6 +118,7 @@ MainWindow::MainWindow()
 	fWireGuardDisabled(false),
 	fObfsproxyDisabled(false),
 	fV2RayDisabled(false),
+	fFirewallDisabled(true),
 	fPendingConnect(false),
 	fLoginIdx(0),
 	fLogoutIdx(0),
@@ -358,8 +359,7 @@ MainWindow::_BuildMainCard()
 		"Hardcore mode (also block Google and Facebook)",
 		new BMessage(kMsgAntiTrackerHard));
 
-	// Haiku has no packet filter for a kill switch
-	fSettings.firewallOnConnect = false;
+	// Shown once the service says it has a firewall (_HandleHello)
 	fFirewallBox->Hide();
 	fFirewallOnConnectBox->Hide();
 	fFirewallOnConnectBox->SetValue(fSettings.firewallOnConnect);
@@ -791,6 +791,16 @@ MainWindow::_HandleHello(const json& m)
 	// obfs4proxy and V2Ray are separate helpers the service may lack
 	fObfsproxyDisabled = !JStr(disabled, "ObfsproxyError").empty();
 	fV2RayDisabled = !JStr(disabled, "V2RayError").empty();
+	fFirewallDisabled = !JStr(disabled, "FirewallError").empty();
+	if (fFirewallDisabled)
+		fSettings.firewallOnConnect = false;
+	for (BView* box : {(BView*)fFirewallBox, (BView*)fFirewallOnConnectBox}) {
+		if (fFirewallDisabled && !box->IsHidden())
+			box->Hide();
+		else if (!fFirewallDisabled && box->IsHidden())
+			box->Show();
+	}
+	fFirewallOnConnectBox->SetValue(fSettings.firewallOnConnect);
 	for (VpnType type : {VpnType::WireGuard, VpnType::OpenVPN}) {
 		Obfuscation& obfs = fSettings.ObfsFor(type);
 		if ((fV2RayDisabled && obfs.v2ray != V2Ray::None)
